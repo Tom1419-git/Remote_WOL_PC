@@ -1,76 +1,52 @@
-# 🚀 RemoteWOL v2.0 - Le Panneau de Contrôle PC Ultime
+# RemoteWOL V1.0.0 🚀
 
-Bienvenue sur le projet **RemoteWOL v2.0** ! 
+RemoteWOL est une solution complète (Client + Serveur + Interface Web) permettant d'allumer (Wake-On-LAN), éteindre, mettre en veille et verrouiller un ou plusieurs PC Windows à distance depuis n'importe où, via une application web moderne (PWA) optimisée pour mobile et bureau.
 
-Cette application vous permet d'allumer (Wake On LAN), verrouiller, et éteindre n'importe quel PC sous Windows depuis une magnifique interface web (optimisée pour iPhone/mobile). 
+## ✨ Fonctionnalités
+- **Wake on LAN (WOL)** : Allumez votre PC via un paquet magique envoyé sur le réseau local (ou via votre adresse IP Publique depuis l'extérieur).
+- **Contrôle d'alimentation** : Éteignez, mettez en veille ou verrouillez votre PC à distance.
+- **Support Multi-PC & Multi-Utilisateurs** : Ajoutez autant de PC que vous le souhaitez. Une interface administrateur permet de créer plusieurs comptes utilisateurs isolés (parfait pour partager avec un ami ou la famille sans mélanger les PC).
+- **Interface PWA (Mobile-first)** : Interface sombre (dark mode), animations fluides, boutons de verrouillage/extinction clairs, ajoutable sur l'écran d'accueil comme une application native.
+- **Sécurité** : Authentification par login/mot de passe sur l'interface web, et communication sécurisée (Clé API) entre le relais (NAS/Serveur) et le PC client. Compatible toutes versions de Windows (Home et Pro) via les tâches planifiées interactives.
 
-**Ce qui change dans la V2 (Sleek Dark Mode) :**
-- 🎨 Design entièrement revu (mode sombre complet, boutons "Pillules").
-- ⚡ **Zéro mot de passe sur Windows** : Le script d'installation installe un service ultra-léger et ne nécessite plus aucun mot de passe.
-- 🌍 **Support Multi-Réseaux** : Vous pouvez allumer, verrouiller et éteindre un PC situé sur *un autre réseau internet* !
-- 👥 Multi-Comptes : Un système d'administration permet de créer des comptes pour vos amis, chacun gérant ses propres PC.
+## 🏗 Architecture
+L'application fonctionne en trois parties :
+1. **Frontend Web (React/Vite)** : L'interface utilisateur à laquelle on accède depuis son téléphone ou PC.
+2. **NAS Relay (Node.js)** : Un serveur relais (généralement hébergé sur un NAS Synology ou un Raspberry Pi via Docker) qui garde une base de données des utilisateurs/PC, envoie les paquets WOL, et relaie les commandes au PC client.
+3. **Windows Client (C# .NET)** : Un service très léger qui tourne en arrière-plan sur le PC Windows et écoute les commandes (Extinction, Veille, Verrouillage) sur le port `8085`.
 
----
+## 🛠 Prérequis
+- Un PC sous **Windows 10 ou 11** (Home ou Pro).
+- Un serveur/NAS (ex: Synology) compatible Docker pour héberger le serveur et l'interface web.
+- Le WOL (Wake on LAN) activé dans le BIOS et dans les paramètres de la carte réseau du PC Windows.
 
-## 🏗 Architecture du Projet
+## 📥 Installation
 
-Le projet est divisé en deux grandes parties :
+### 1. Installation sur le PC Windows (Le Client)
+1. Téléchargez (via le bouton vert Code -> Download ZIP) ce dépôt sur le PC Windows que vous souhaitez contrôler.
+2. Décompressez le dossier.
+3. Allez dans le dossier `windows-client`.
+4. Faites un clic droit sur le fichier **`Install.ps1`** et choisissez **Exécuter avec PowerShell**.
+5. Une invite vous demandera de créer une **Clé API**. Entrez un mot de passe de votre choix (ex: `MaCleSecrete123`).
+6. Le script va s'occuper de tout : créer l'application, ouvrir le port 8085 dans le pare-feu, et créer les tâches en arrière-plan.
 
-1. **Le Serveur Central (NAS ou VPS)** :
-   - Un **Relais (Backend Node.js)** qui stocke les comptes, envoie les paquets magiques de Wake On LAN, et sert de relais pour les commandes vers les PC.
-   - Un **Frontend (React)**, l'interface graphique sombre, design et responsive.
-2. **Le Client PC (Windows)** :
-   - Un micro-service Windows en C# (`PcRemoteClient`) qui écoute en arrière-plan sur le port 8085. Il exécute instantanément les ordres "Verrouiller" et "Éteindre" de manière sécurisée (protégé par clé API).
+### 2. Hébergement Web & Relais (Le Serveur - Docker)
+L'interface et le relais peuvent être déployés avec Docker.
+Un fichier `docker-compose.yml` (à configurer selon votre environnement) ou le script de déploiement `deploy_v2.py` (pour un transfert SSH direct) sont à votre disposition.
 
----
+- Le **Relais (Backend)** écoute par défaut sur le port interne `8082`.
+- Le **Frontend (Web)** écoute par défaut sur le port `80` du container (qui peut être mappé sur `8081`).
 
-## 📖 Tutoriel d'Installation Complet
+*Astuce Synology* : Utilisez le "Reverse Proxy" (Portail de connexion > Avancé) pour lier un domaine HTTPS vers le port 8081 de l'interface web.
 
-### Étape 1 : Déployer le Serveur Central (avec Docker)
+## 📱 Utilisation
+1. Accédez à l'URL de votre interface web (ex: `https://wol.mon-domaine.com`).
+2. Connectez-vous avec vos identifiants (le compte par défaut se crée au premier démarrage si la base est vide, pensez à ajouter votre propre admin).
+3. Cliquez sur **+ Add PC** et renseignez :
+   - Le nom (ex: Mon PC Fixe)
+   - L'adresse IP Locale (ex: 192.168.1.100)
+   - L'adresse MAC de la carte réseau
+   - La clé API (la même que vous avez tapée lors de l'exécution de `Install.ps1`)
+   - (Optionnel) L'IP Publique si vous accédez depuis l'extérieur et que vous avez fait les redirections de port sur votre routeur (ports 9 et 8085 pointant vers l'IP Locale du PC).
 
-Si vous installez ça sur votre NAS (ex: Synology avec Container Manager) ou un serveur Linux :
-
-1. Compilez l'interface web (Dossier `frontend`) :
-   ```bash
-   cd frontend
-   npm install
-   npm run build
-   ```
-2. Sur votre serveur, créez un dossier `remotewol_relay` avec le contenu du dossier `nas-relay` et construisez l'image Docker :
-   ```bash
-   cd nas-relay
-   docker build -t remotewol-relay .
-   docker run -d --name remotewol-relay --network host -v /volume1/docker/remotewol_data:/data --restart unless-stopped remotewol-relay
-   ```
-3. Configurez un reverse proxy (ex: Nginx) pour exposer :
-   - `http://votre-nas/` vers les fichiers statiques du frontend (`frontend/dist/`).
-   - `http://votre-nas/relay/`, `/auth/`, `/pcs/`, `/admin/` vers `http://localhost:8082/` (le port du serveur Node).
-
-*Note : Dès le premier lancement, l'application crée automatiquement un compte `admin` avec le mot de passe `admin` (à changer immédiatement).*
-
-### Étape 2 : Connecter votre PC Windows (Client)
-
-Installation ultra-simple en **1 clic**.
-
-1. Déplacez le dossier `windows-client` sur le bureau de votre PC Windows.
-2. Faites un clic droit sur le fichier **`Install.ps1`** -> **Exécuter avec PowerShell**.
-3. (Si une fenêtre rouge apparaît, cliquez sur "Oui" pour les droits administrateur).
-4. Le script va vous demander de coller votre **Clé API**. 
-   *(C'est la clé que vous avez inventée lors de l'ajout de votre PC dans l'interface web)*.
-5. Et c'est tout ! Le script télécharge, compile, crée la règle Pare-feu et lance le service automatiquement. 
-
-### Étape 3 : Gérer un PC à distance (Réseau d'un ami)
-
-L'un des gros avantages de la V2 est de pouvoir contrôler des PC distants !
-Si votre ami veut ajouter son PC sur votre serveur :
-
-1. Allez dans le **Panel Admin** de l'application et créez-lui un compte utilisateur.
-2. Demandez à votre ami d'aller sur l'interface, de cliquer sur "+ Ajouter PC" et de remplir ses infos.
-3. **Important pour les amis hors du réseau** : 
-   - Dans le champ "IP Locale / Publique", votre ami doit mettre **son IP Publique internet** (ou une adresse DDNS).
-   - Dans sa box internet, il doit ouvrir/rediriger le port TCP `8085` vers l'IP locale de son PC.
-4. **Pour le Wake On LAN à distance** :
-   - Il doit aussi ajouter son IP Publique dans le champ "Public IP" et ouvrir le port UDP `9` sur sa box (et le rediriger en "Subnet Directed Broadcast", ex: vers `192.168.1.255`).
-
-Et voilà, tout fonctionne ! 🎉
-Appuyez sur `Partager -> Sur l'écran d'accueil` sur votre iPhone pour profiter de l'expérience Full Screen.
+🎉 **Et voilà ! Vous pouvez allumer, éteindre ou verrouiller votre PC d'un simple clic !**

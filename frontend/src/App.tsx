@@ -116,7 +116,7 @@ function LoginPage() {
 
 
 // ─── PC Dashboard (Refactored PCCard) ───────────────────────────────────────────
-function PCCard({ pc, onDelete }: { pc: PC; onDelete: (id: string) => void }) {
+function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => void; onEdit: (pc: PC) => void }) {
   const callApi = useApi();
   const [status, setStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -175,6 +175,9 @@ function PCCard({ pc, onDelete }: { pc: PC; onDelete: (id: string) => void }) {
           <button onClick={checkStatus} style={{ background: 'var(--surface-light)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)' }}>
             <RefreshCw size={16} />
           </button>
+          <button onClick={() => onEdit(pc)} style={{ background: 'rgba(255,149,0,0.1)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF9500' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          </button>
           <button onClick={() => onDelete(pc.id)} style={{ background: 'rgba(255,59,48,0.1)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--danger-color)' }}>
             <Trash2 size={16} />
           </button>
@@ -205,20 +208,22 @@ function PCCard({ pc, onDelete }: { pc: PC; onDelete: (id: string) => void }) {
   );
 }
 
-// ─── Add PC Modal ─────────────────────────────────────────────────────────────
-function AddPCModal({ onAdd, onClose }: { onAdd: (pc: PC) => void; onClose: () => void }) {
+// ─── PC Modal ─────────────────────────────────────────────────────────────
+function PCModal({ onSave, onClose, pcToEdit }: { onSave: (pc: PC) => void; onClose: () => void; pcToEdit?: PC | null }) {
   const callApi = useApi();
-  const [form, setForm] = useState({ name: '', ip: '', mac: '', apiKey: 'WOL-1234-ABCD-SECURE-KEY-2026' });
+  const [form, setForm] = useState(pcToEdit ? { ...pcToEdit } : { name: '', ip: '', mac: '', apiKey: 'WOL-1234-ABCD-SECURE-KEY-2026', wolIp: '', wolPort: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
     try {
-      const res = await callApi('/pcs', { method: 'POST', body: JSON.stringify(form) });
+      const url = pcToEdit ? `/pcs/${pcToEdit.id}` : '/pcs';
+      const method = pcToEdit ? 'PUT' : 'POST';
+      const res = await callApi(url, { method, body: JSON.stringify(form) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      onAdd(data);
+      onSave(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -230,7 +235,7 @@ function AddPCModal({ onAdd, onClose }: { onAdd: (pc: PC) => void; onClose: () =
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100, padding: '0' }}>
       <div className="card" style={{ width: '100%', maxWidth: '500px', borderRadius: '24px 24px 0 0', borderBottom: 'none', margin: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-          <h3 style={{ margin: 0, fontSize: '20px' }}>Add PC</h3>
+          <h3 style={{ margin: 0, fontSize: '20px' }}>{pcToEdit ? 'Edit PC' : 'Add PC'}</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '20px' }}>✕</button>
         </div>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -248,7 +253,9 @@ function AddPCModal({ onAdd, onClose }: { onAdd: (pc: PC) => void; onClose: () =
             </div>
           ))}
           {error && <div style={{ color: 'var(--danger-color)', fontSize: '13px' }}>{error}</div>}
-          <button className="btn-primary" type="submit" disabled={loading} style={{ marginTop: '8px' }}>{loading ? 'Adding...' : 'Add PC'}</button>
+          <button className="btn-primary" type="submit" disabled={loading} style={{ marginTop: '8px' }}>
+            {loading ? 'Saving...' : (pcToEdit ? 'Save Changes' : 'Add PC')}
+          </button>
         </form>
       </div>
     </div>
@@ -354,6 +361,7 @@ function Dashboard() {
   const callApi = useApi();
   const [pcs, setPcs] = useState<PC[]>(user?.pcs || []);
   const [showAddPC, setShowAddPC] = useState(false);
+  const [pcToEdit, setPcToEdit] = useState<PC | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
   const [selectedPC, setSelectedPC] = useState<PC | null>(pcs.length > 0 ? pcs[0] : null);
 
@@ -363,6 +371,18 @@ function Dashboard() {
     const newPcs = pcs.filter(p => p.id !== id);
     setPcs(newPcs);
     if (selectedPC?.id === id) setSelectedPC(newPcs.length > 0 ? newPcs[0] : null);
+  };
+
+  const handleSavePC = (savedPc: PC) => {
+    if (pcToEdit) {
+      setPcs(pcs.map(p => p.id === savedPc.id ? savedPc : p));
+      if (selectedPC?.id === savedPc.id) setSelectedPC(savedPc);
+    } else {
+      setPcs([...pcs, savedPc]);
+      setSelectedPC(savedPc);
+    }
+    setShowAddPC(false);
+    setPcToEdit(null);
   };
 
   if (showAdmin) return <div className="container"><AdminPanel onBack={() => setShowAdmin(false)} /></div>;
@@ -404,15 +424,17 @@ function Dashboard() {
           <button className="btn-primary" onClick={() => setShowAddPC(true)}>+ Add PC</button>
         </div>
       ) : (
-        selectedPC && <PCCard pc={selectedPC} onDelete={deletePC} />
+        selectedPC && <PCCard pc={selectedPC} onDelete={deletePC} onEdit={(pc) => { setPcToEdit(pc); setShowAddPC(true); }} />
       )}
 
-      {showAddPC && <AddPCModal onAdd={(pc) => { setPcs([...pcs, pc]); setSelectedPC(pc); setShowAddPC(false); }} onClose={() => setShowAddPC(false)} />}
+      {showAddPC && <PCModal pcToEdit={pcToEdit} onSave={handleSavePC} onClose={() => { setShowAddPC(false); setPcToEdit(null); }} />}
 
-      <div className="bottom-nav">
-        <div className="nav-item active"><Shield size={24} onClick={() => user?.role === 'admin' && setShowAdmin(true)} style={{ color: user?.role === 'admin' ? 'inherit' : 'var(--border-subtle)' }} /></div>
-        <div className="nav-item"><MonitorSmartphone size={24} style={{ color: 'var(--text-primary)' }} /></div>
-        <div className="nav-item"><LogOut size={24} onClick={logout} /></div>
+      <div className="bottom-nav-wrapper">
+        <div className="bottom-nav">
+          <div className="nav-item active"><Shield size={24} onClick={() => user?.role === 'admin' && setShowAdmin(true)} style={{ color: user?.role === 'admin' ? 'inherit' : 'var(--border-subtle)' }} /></div>
+          <div className="nav-item"><MonitorSmartphone size={24} style={{ color: 'var(--text-primary)' }} /></div>
+          <div className="nav-item"><LogOut size={24} onClick={logout} /></div>
+        </div>
       </div>
     </div>
   );

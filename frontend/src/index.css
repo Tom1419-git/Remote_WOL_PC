@@ -232,16 +232,32 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
 }
 
 /* Bottom Nav */
+.bottom-nav-wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 0 24px 24px 24px;
+  display: flex;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: none;
+}
+
 .bottom-nav {
-  margin-top: auto;
-  background-color: var(--surface-color);
+  width: 100%;
+  max-width: 432px;
+  background-color: rgba(18, 18, 18, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius-pill);
-  padding: 16px 24px;
+  padding: 16px 32px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border: 1px solid var(--border-subtle);
-  margin-bottom: 12px;
+  border: 1px solid var(--border-strong);
+  pointer-events: auto;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.8);
 }
 
 .nav-item {
