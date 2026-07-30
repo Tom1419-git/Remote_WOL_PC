@@ -55,8 +55,8 @@ void RunCmdCommand(string command, string arguments)
 app.MapPost("/api/lock", () =>
 {
     // The service runs as SYSTEM, so LockWorkStation won't affect the user's session.
-    // Instead, we use tsdiscon to disconnect all user sessions (1 to 10), which effectively locks the PC.
-    RunCmdCommand("cmd.exe", "/c \"for /l %i in (1,1,10) do @tsdiscon %i >nul 2>&1\"");
+    // We trigger the scheduled task 'RemoteWOL_Lock' which runs interactively.
+    RunCmdCommand("schtasks.exe", "/run /tn \"RemoteWOL_Lock\"");
     return Results.Ok(new { message = "PC Locked" });
 });
 

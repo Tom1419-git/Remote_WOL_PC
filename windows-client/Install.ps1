@@ -82,6 +82,15 @@ $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Description "Service de controle a distance RemoteWOL" | Out-Null
 
+# 6.5. Tâche Planifiée (Verrouillage interactif)
+Write-Host "Creation de la tache de verrouillage (Session utilisateur)..." -ForegroundColor Yellow
+$LockTaskName = "RemoteWOL_Lock"
+Unregister-ScheduledTask -TaskName $LockTaskName -Confirm:$false -ErrorAction SilentlyContinue
+$LockAction = New-ScheduledTaskAction -Execute "rundll32.exe" -Argument "user32.dll,LockWorkStation"
+$LockPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+$LockSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName $LockTaskName -Action $LockAction -Principal $LockPrincipal -Settings $LockSettings -Description "Tache de verrouillage interactif pour RemoteWOL" | Out-Null
+
 # 7. Lancement
 Write-Host "Lancement du service..." -ForegroundColor Yellow
 Start-ScheduledTask -TaskName $TaskName
