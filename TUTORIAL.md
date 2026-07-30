@@ -39,7 +39,7 @@ Cette étape est vitale pour que le PC puisse se déverrouiller tout seul. L'API
 1. Ouvre un terminal (Invite de commandes ou PowerShell).
 2. Tape cette commande en remplaçant `TonMotDePasse` par le vrai code PIN ou mot de passe de ta session Windows :
    ```bash
-   curl -X POST http://localhost:8080/api/set-credentials -H "x-api-key: WOL-1234-ABCD-SECURE-KEY-2026" -H "Content-Type: application/json" -d "{\"password\": \"TonMotDePasse\"}"
+   curl.exe -X POST http://localhost:8080/api/set-credentials -H "x-api-key: WOL-1234-ABCD-SECURE-KEY-2026" -H "Content-Type: application/json" -d "{\"password\": \"TonMotDePasse\"}"
    ```
 
 ### Étape C : Installer le "Déverrouilleur" (Credential Provider)
