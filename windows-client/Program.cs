@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.IO.Pipes;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +10,6 @@ using Microsoft.Extensions.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel to listen on all local IP addresses on port 8080
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.ListenAnyIP(8080);
@@ -14,14 +17,11 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 
 var app = builder.Build();
 
-// Simple API Key middleware for security
 app.Use(async (context, next) =>
 {
     var config = app.Services.GetRequiredService<IConfiguration>();
     var expectedApiKey = config["ApiKey"] ?? "default_secret_key_change_me";
     
-    // We expect the API key in the 'Authorization' header as 'Bearer <API_KEY>' 
-    // or simply 'x-api-key' for shortcuts simplicity
     var providedApiKey = context.Request.Headers["x-api-key"].FirstOrDefault();
 
     if (string.IsNullOrEmpty(providedApiKey) || providedApiKey != expectedApiKey)
@@ -34,7 +34,6 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Helper to run cmd commands
 void RunCmdCommand(string command, string arguments)
 {
     var processInfo = new ProcessStartInfo
@@ -47,7 +46,8 @@ void RunCmdCommand(string command, string arguments)
     Process.Start(processInfo);
 }
 
-// Routes
+string CredentialsFile = "credentials.dat";
+
 app.MapPost("/api/lock", () =>
 {
     RunCmdCommand("rundll32.exe", "user32.dll,LockWorkStation");
@@ -71,4 +71,51 @@ app.MapGet("/api/status", () =>
     return Results.Ok(new { status = "online", os = "Windows" });
 });
 
+app.MapPost("/api/set-credentials", (CredentialPayload payload) =>
+{
+    if (string.IsNullOrEmpty(payload.Password)) return Results.BadRequest("Password is required.");
+    byte[] plainBytes = Encoding.UTF8.GetBytes(payload.Password);
+    byte[] encryptedBytes = ProtectedData.Protect(plainBytes, null, DataProtectionScope.LocalMachine);
+    File.WriteAllBytes(CredentialsFile, encryptedBytes);
+    return Results.Ok(new { message = "Credentials securely saved using DPAPI." });
+});
+
+app.MapPost("/api/unlock", async () =>
+{
+    if (!File.Exists(CredentialsFile)) {
+        return Results.BadRequest(new { error = "No credentials configured. Call /api/set-credentials first." });
+    }
+
+    try 
+    {
+        byte[] encryptedBytes = File.ReadAllBytes(CredentialsFile);
+        byte[] plainBytes = ProtectedData.Unprotect(encryptedBytes, null, DataProtectionScope.LocalMachine);
+        string password = Encoding.UTF8.GetString(plainBytes);
+
+        // Send to Credential Provider via Named Pipe
+        using (var pipeClient = new NamedPipeClientStream(".", "RemoteWOLCredentialPipe", PipeDirection.Out))
+        {
+            await pipeClient.ConnectAsync(3000); // 3 second timeout
+            using (var writer = new StreamWriter(pipeClient))
+            {
+                await writer.WriteLineAsync(password);
+                await writer.FlushAsync();
+            }
+        }
+        return Results.Ok(new { message = "Unlock signal sent to Credential Provider." });
+    }
+    catch (TimeoutException)
+    {
+        return Results.StatusCode(503); // Service Unavailable - Credential Provider not listening (maybe not locked?)
+    }
+    catch (Exception)
+    {
+        return Results.StatusCode(500); // Internal Server Error
+    }
+});
+
 app.Run();
+
+public class CredentialPayload {
+    public string? Password { get; set; }
+}

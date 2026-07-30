@@ -8,4 +8,8 @@
     <OutputType>WinExe</OutputType>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
+  </ItemGroup>
+
 </Project>
