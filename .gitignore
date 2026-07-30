@@ -1,2 +1,3 @@
 windows-client/bin/
 windows-client/obj/
+local-wol-relay/node_modules/
