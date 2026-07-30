@@ -26,24 +26,27 @@ Puisque le NAS n'est pas accessible directement par mot de passe pour des raison
 
 ## 2️⃣ Configuration du PC Windows (Le Serveur)
 
+J'ai préparé un dossier prêt à l'emploi sur ton Bureau Windows : **`RemoteWOL_Release`**.
+
 ### Étape A : Lancer l'API C#
-1. Ouvre un terminal sur ton PC.
-2. Va dans le dossier du projet : `cd C:\Chemin\Vers\Remote_WOL_PC\windows-client`
-3. Lance le serveur : `dotnet run` (Il démarrera sur le port 8080).
-4. *(Bonus)* : Tu peux créer une tâche planifiée Windows (Task Scheduler) pour lancer `dotnet run` automatiquement au démarrage du PC.
+1. Ouvre le dossier **`RemoteWOL_Release`** sur ton Bureau.
+2. Double-clique sur **`PcRemoteClient.exe`**.
+3. Une fenêtre noire (console) va s'ouvrir. Garde-la ouverte en arrière-plan (elle écoute sur le port `8080`).
+*(Bonus)* : Tu pourras plus tard configurer Windows pour lancer ce `.exe` automatiquement au démarrage.
 
 ### Étape B : Sauvegarder ton mot de passe Windows de façon sécurisée
 Cette étape est vitale pour que le PC puisse se déverrouiller tout seul. L'API va chiffrer (avec le chiffrement militaire DPAPI de Windows) ton mot de passe.
-1. Ouvre un autre terminal.
+1. Ouvre un terminal (Invite de commandes ou PowerShell).
 2. Tape cette commande en remplaçant `TonMotDePasse` par le vrai code PIN ou mot de passe de ta session Windows :
    ```bash
    curl -X POST http://localhost:8080/api/set-credentials -H "x-api-key: WOL-1234-ABCD-SECURE-KEY-2026" -H "Content-Type: application/json" -d "{\"password\": \"TonMotDePasse\"}"
    ```
 
 ### Étape C : Installer le "Déverrouilleur" (Credential Provider)
-1. Va dans le dossier `windows-credential-provider`.
+1. Va toujours dans le dossier **`RemoteWOL_Release`** sur ton Bureau.
 2. Fais un **clic droit sur `install.bat`** > **Exécuter en tant qu'administrateur**.
-3. La DLL s'installe dans ton système Windows. (Pour la retirer, lance `Unregister.reg`).
+3. Un message confirmera la copie dans `System32` et l'éditeur de registre demandera l'autorisation d'ajouter les clés. Accepte (Oui).
+4. La DLL est installée ! (Pour la retirer plus tard, utilise le fichier `Unregister.reg`).
 
 ---
 
