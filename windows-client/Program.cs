@@ -54,7 +54,9 @@ void RunCmdCommand(string command, string arguments)
 
 app.MapPost("/api/lock", () =>
 {
-    RunCmdCommand("rundll32.exe", "user32.dll,LockWorkStation");
+    // The service runs as SYSTEM, so LockWorkStation won't affect the user's session.
+    // Instead, we use tsdiscon to disconnect all user sessions (1 to 10), which effectively locks the PC.
+    RunCmdCommand("cmd.exe", "/c \"for /l %i in (1,1,10) do @tsdiscon %i >nul 2>&1\"");
     return Results.Ok(new { message = "PC Locked" });
 });
 
