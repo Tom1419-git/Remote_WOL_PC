@@ -1,201 +1,429 @@
-import { useState, useEffect } from 'react';
-import { Power, Lock, MonitorSmartphone, Settings, Unlock, Fingerprint, Plus, Trash2, Server } from 'lucide-react';
-import clsx from 'clsx';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import './index.css';
 
+const API = '';  // same origin via nginx proxy
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface PC {
   id: string;
   name: string;
-  ip: string;
   mac: string;
+  ip: string;
   apiKey: string;
+  wolIp?: string;
+  wolPort?: string;
+}
+interface User { id: string; username: string; role: string; pcs: PC[]; }
+interface AuthCtxType {
+  user: User | null; token: string | null;
+  login: (u: User, t: string) => void; logout: () => void;
 }
 
-function App() {
-  const [pcs, setPcs] = useState<PC[]>(() => {
-    const saved = localStorage.getItem('pcs');
-    return saved ? JSON.parse(saved) : [{ id: '1', name: 'Mon PC Windows', ip: '192.168.1.140', mac: '00:00:00:00:00:00', apiKey: 'WOL-1234-ABCD-SECURE-KEY-2026' }];
+// ─── Auth Context ─────────────────────────────────────────────────────────────
+const AuthContext = createContext<AuthCtxType>({ user: null, token: null, login: () => {}, logout: () => {} });
+function useAuth() { return useContext(AuthContext); }
+
+function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(() => {
+    try { return JSON.parse(localStorage.getItem('rwol_user') || 'null'); } catch { return null; }
   });
-  
-  const [selectedPcId, setSelectedPcId] = useState<string>(pcs[0]?.id || '');
-  const [isConfiguring, setIsConfiguring] = useState(false);
-  const [pcStatus, setPcStatus] = useState<'online' | 'offline'>('offline');
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('rwol_token'));
 
-  const selectedPc = pcs.find(pc => pc.id === selectedPcId);
-
-  useEffect(() => {
-    localStorage.setItem('pcs', JSON.stringify(pcs));
-  }, [pcs]);
-
-  // Fake ping to check status
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPcStatus(prev => prev === 'online' ? 'offline' : 'online');
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const addPc = () => {
-    const newPc: PC = {
-      id: Date.now().toString(),
-      name: `PC ${pcs.length + 1}`,
-      ip: '192.168.1.x',
-      mac: '00:00:00:00:00:00',
-      apiKey: ''
-    };
-    setPcs([...pcs, newPc]);
-    setSelectedPcId(newPc.id);
+  const login = (u: User, t: string) => {
+    setUser(u); setToken(t);
+    localStorage.setItem('rwol_user', JSON.stringify(u));
+    localStorage.setItem('rwol_token', t);
   };
-
-  const updatePc = (id: string, field: keyof PC, value: string) => {
-    setPcs(pcs.map(pc => pc.id === id ? { ...pc, [field]: value } : pc));
+  const logout = () => {
+    setUser(null); setToken(null);
+    localStorage.removeItem('rwol_user'); localStorage.removeItem('rwol_token');
   };
+  return <AuthContext.Provider value={{ user, token, login, logout }}>{children}</AuthContext.Provider>;
+}
 
-  const deletePc = (id: string) => {
-    const filtered = pcs.filter(pc => pc.id !== id);
-    setPcs(filtered);
-    if (selectedPcId === id && filtered.length > 0) setSelectedPcId(filtered[0].id);
-  };
+// ─── API helper ───────────────────────────────────────────────────────────────
+function useApi() {
+  const { token, logout } = useAuth();
+  return useCallback(async (path: string, options: RequestInit = {}) => {
+    const res = await fetch(`${API}${path}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) }
+    });
+    if (res.status === 401) { logout(); throw new Error('Session expirée'); }
+    return res;
+  }, [token, logout]);
+}
 
-  const sendCommand = async (command: string) => {
-    if (!selectedPc) return;
-    console.log(`Sending command: ${command} to ${selectedPc.ip}`);
-    alert(`Commande "${command}" préparée pour ${selectedPc.name} (${selectedPc.ip}).\nEn réalité, c'est le raccourci iOS qui enverra cette requête.`);
+// ─── Login Page ───────────────────────────────────────────────────────────────
+function LoginPage() {
+  const { login } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur de connexion');
+      login(data.user, data.token);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="app-container">
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <div>
-          <h1>Remote WOL PC</h1>
-          {selectedPc && (
-            <div className="status-indicator">
-              <span className={clsx('status-dot', pcStatus === 'online' && 'online')}></span>
-              {selectedPc.name} - {pcStatus === 'online' ? 'En ligne' : 'Hors ligne'}
-            </div>
-          )}
+    <div className="container" style={{ justifyContent: 'center' }}>
+      <div style={{ textAlign: 'left', marginBottom: '40px' }}>
+        <h1 style={{ margin: 0 }}>Hey,<br/>Welcome<br/>Back</h1>
+        <p className="subtitle" style={{ marginTop: '12px' }}>Sign in to RemoteWOL</p>
+      </div>
+
+      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className="input-wrapper">
+          <span className="input-icon"><Shield size={20} /></span>
+          <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" autoComplete="username" required />
         </div>
-        <button className="btn btn-icon secondary" onClick={() => setIsConfiguring(!isConfiguring)}>
-          <Settings size={20} />
-        </button>
-      </header>
-
-      {isConfiguring ? (
-        <div className="glass-card" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2>Configuration des PC</h2>
-            <button className="btn btn-icon secondary" onClick={addPc}>
-              <Plus size={20} />
-            </button>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {pcs.map((pc) => (
-              <div key={pc.id} style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Server size={16} /> Paramètres du PC
-                  </h3>
-                  <button className="btn btn-icon" style={{ color: 'var(--danger-color)', background: 'transparent' }} onClick={() => deletePc(pc.id)}>
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-                
-                <div className="input-group">
-                  <label className="input-label">Nom du PC</label>
-                  <input type="text" className="apple-input" value={pc.name} onChange={(e) => updatePc(pc.id, 'name', e.target.value)} />
-                </div>
-                
-                <div className="input-group">
-                  <label className="input-label">Adresse IP Locale</label>
-                  <input type="text" className="apple-input" value={pc.ip} onChange={(e) => updatePc(pc.id, 'ip', e.target.value)} />
-                </div>
-                
-                <div className="input-group">
-                  <label className="input-label">Adresse MAC (WOL)</label>
-                  <input type="text" className="apple-input" value={pc.mac} onChange={(e) => updatePc(pc.id, 'mac', e.target.value)} />
-                </div>
-
-                <div className="input-group">
-                  <label className="input-label">Clé API (Sécurité)</label>
-                  <input type="password" className="apple-input" value={pc.apiKey} onChange={(e) => updatePc(pc.id, 'apiKey', e.target.value)} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button className="btn" style={{ width: '100%', marginTop: '24px' }} onClick={() => setIsConfiguring(false)}>
-            Terminer la configuration
+        <div className="input-wrapper">
+          <span className="input-icon"><Lock size={20} /></span>
+          <input className="input" type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" autoComplete="current-password" required />
+          <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+            {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
         </div>
-      ) : (
-        <>
-          {pcs.length > 1 && (
-            <div style={{ marginBottom: '24px' }}>
-              <select 
-                className="apple-input" 
-                value={selectedPcId} 
-                onChange={(e) => setSelectedPcId(e.target.value)}
-                style={{ appearance: 'none', background: 'rgba(255,255,255,0.1)', cursor: 'pointer' }}
-              >
-                {pcs.map(pc => (
-                  <option key={pc.id} value={pc.id} style={{ color: 'black' }}>{pc.name} ({pc.ip})</option>
-                ))}
-              </select>
-            </div>
-          )}
+        
+        {error && <div style={{ background: 'rgba(255,59,48,0.1)', border: '1px solid rgba(255,59,48,0.3)', borderRadius: '12px', padding: '12px 16px', fontSize: '14px', color: 'var(--danger-color)', marginBottom: '16px' }}>{error}</div>}
+        
+        <button className="btn-primary" type="submit" disabled={loading} style={{ marginTop: '24px' }}>
+          {loading ? 'Signing in...' : 'Sign In'}
+        </button>
+      </form>
+    </div>
+  );
+}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-            <button className="glass-card btn-action" onClick={() => sendCommand('wake')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', border: 'none', cursor: 'pointer', color: 'inherit' }}>
-              <div style={{ padding: '16px', background: 'var(--success-color)', borderRadius: '50%', color: 'white' }}>
-                <Power size={28} />
-              </div>
-              <span style={{ fontWeight: 600 }}>Allumer</span>
-            </button>
 
-            <button className="glass-card btn-action" onClick={() => sendCommand('shutdown')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', border: 'none', cursor: 'pointer', color: 'inherit' }}>
-              <div style={{ padding: '16px', background: 'var(--danger-color)', borderRadius: '50%', color: 'white' }}>
-                <MonitorSmartphone size={28} />
-              </div>
-              <span style={{ fontWeight: 600 }}>Éteindre</span>
-            </button>
 
-            <button className="glass-card btn-action" onClick={() => sendCommand('lock')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', border: 'none', cursor: 'pointer', color: 'inherit' }}>
-              <div style={{ padding: '16px', background: 'var(--accent-color)', borderRadius: '50%', color: 'white' }}>
-                <Lock size={28} />
-              </div>
-              <span style={{ fontWeight: 600 }}>Verrouiller</span>
-            </button>
+// ─── PC Dashboard (Refactored PCCard) ───────────────────────────────────────────
+function PCCard({ pc, onDelete }: { pc: PC; onDelete: (id: string) => void }) {
+  const callApi = useApi();
+  const [status, setStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
 
-            <button className="glass-card btn-action" onClick={() => sendCommand('unlock')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', border: 'none', cursor: 'pointer', color: 'inherit' }}>
-              <div style={{ padding: '16px', background: 'rgba(120, 120, 128, 0.32)', borderRadius: '50%', color: 'var(--accent-color)' }}>
-                <Unlock size={28} />
-              </div>
-              <span style={{ fontWeight: 600 }}>Déverrouiller</span>
-            </button>
+  const checkStatus = useCallback(async () => {
+    setStatus('checking');
+    try {
+      const res = await callApi(`/relay/status`, { method: 'POST', body: JSON.stringify({ pcId: pc.id }) });
+      setStatus(res.ok ? 'online' : 'offline');
+    } catch { setStatus('offline'); }
+  }, [pc.id, callApi]);
+
+  useEffect(() => { checkStatus(); const t = setInterval(checkStatus, 15000); return () => clearInterval(t); }, [checkStatus]);
+
+  const sendCommand = async (cmd: string) => {
+    setActionLoading(cmd); setFeedback(null);
+    try {
+      const endpoint = cmd === 'wake' ? '/relay/wake' : `/relay/${cmd}`;
+      const res = await callApi(endpoint, { method: 'POST', body: JSON.stringify({ pcId: pc.id }) });
+      const data = await res.json();
+      if (res.ok) {
+        const labels: Record<string, string> = { lock: '🔒 Locked', shutdown: '⚡ Shutting down', sleep: '😴 Sleeping', unlock: '🔓 Unlocked', wake: '🟢 WOL sent' };
+        setFeedback({ msg: labels[cmd] || '✅ OK', ok: true });
+        if (cmd === 'lock' || cmd === 'unlock') setTimeout(checkStatus, 3000);
+      } else {
+        setFeedback({ msg: data.error || 'Erreur inconnue', ok: false });
+      }
+    } catch (err: any) {
+      setFeedback({ msg: err.message || 'Impossible de contacter le relay', ok: false });
+    } finally {
+      setActionLoading(null);
+      setTimeout(() => setFeedback(null), 4000);
+    }
+  };
+
+  const actions = [
+    { cmd: 'wake', icon: <Power size={24} />, label: 'Wake', color: '#ffffff' },
+    { cmd: 'lock', icon: <Lock size={24} />, label: 'Lock', color: '#ffffff' },
+    { cmd: 'shutdown', icon: <MonitorSmartphone size={24} />, label: 'Shutdown', color: '#ff3b30' },
+  ];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div className="card" style={{ padding: '20px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-color)' }}>
+        <div>
+          <div style={{ fontSize: '18px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Server size={18} /> {pc.name}
           </div>
-
-          <div className="glass-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-              <div style={{ padding: '12px', background: 'var(--accent-color)', borderRadius: '12px', color: 'white' }}>
-                <Fingerprint size={24} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '17px' }}>Déverrouillage Face ID</h3>
-                <span style={{ fontSize: '13px', opacity: 0.6 }}>Configuration des Raccourcis iOS</span>
-              </div>
-            </div>
-            <p style={{ fontSize: '15px' }}>
-              Installez le raccourci iOS sur votre iPhone pour {selectedPc?.name || 'ce PC'}. Lors de l'installation, entrez l'adresse IP <strong>{selectedPc?.ip}</strong> et l'adresse MAC <strong>{selectedPc?.mac}</strong>.
-            </p>
-            <button className="btn secondary" style={{ width: '100%' }} onClick={() => window.open('https://www.icloud.com/shortcuts/', '_blank')}>
-              Télécharger le Raccourci iOS
-            </button>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            <span className={`status-dot status-${status}`} />
+            {status === 'online' ? 'Online' : status === 'checking' ? 'Checking...' : 'Offline'}
           </div>
-        </>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={checkStatus} style={{ background: 'var(--surface-light)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-primary)' }}>
+            <RefreshCw size={16} />
+          </button>
+          <button onClick={() => onDelete(pc.id)} style={{ background: 'rgba(255,59,48,0.1)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--danger-color)' }}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+
+      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Quick Actions</h3>
+      <div className="dashboard-grid" style={{ marginTop: '0' }}>
+        {actions.map(({ cmd, icon, label, color }) => (
+          <div key={cmd} className="card card-action" onClick={() => sendCommand(cmd)} style={{ opacity: actionLoading && actionLoading !== cmd ? 0.5 : 1 }}>
+            <div className="card-icon-wrapper" style={{ color: color }}>
+              {actionLoading === cmd ? <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite' }} /> : icon}
+            </div>
+            <div>
+              <div className="card-title">{label}</div>
+              <div className="card-status">{cmd === 'wake' ? 'Send packet' : 'Relay to PC'}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {feedback && (
+        <div className="feedback-toast">
+          {feedback.msg}
+        </div>
       )}
     </div>
   );
 }
 
-export default App;
+// ─── Add PC Modal ─────────────────────────────────────────────────────────────
+function AddPCModal({ onAdd, onClose }: { onAdd: (pc: PC) => void; onClose: () => void }) {
+  const callApi = useApi();
+  const [form, setForm] = useState({ name: '', ip: '', mac: '', apiKey: 'WOL-1234-ABCD-SECURE-KEY-2026' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true); setError('');
+    try {
+      const res = await callApi('/pcs', { method: 'POST', body: JSON.stringify(form) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onAdd(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100, padding: '0' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '500px', borderRadius: '24px 24px 0 0', borderBottom: 'none', margin: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <h3 style={{ margin: 0, fontSize: '20px' }}>Add PC</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '20px' }}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {[
+            { label: 'PC Name', key: 'name', placeholder: 'ex: My Desktop', required: true },
+            { label: 'Local IP Address', key: 'ip', placeholder: 'ex: 192.168.1.140', required: true },
+            { label: 'MAC Address', key: 'mac', placeholder: 'ex: AA:BB:CC:DD:EE:FF', required: true },
+            { label: 'API Key', key: 'apiKey', placeholder: 'WOL-1234-ABCD-SECURE-KEY-2026', required: true },
+            { label: 'Public IP / Router IP (Optional - for remote WOL)', key: 'wolIp', placeholder: 'ex: 82.123.X.X', required: false },
+            { label: 'WOL Port (Optional)', key: 'wolPort', placeholder: 'ex: 9', required: false },
+          ].map(({ label, key, placeholder, required }) => (
+            <div key={key}>
+              <label style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>{label}</label>
+              <input className="input" style={{ paddingLeft: '20px' }} value={(form as any)[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} placeholder={placeholder} required={required} />
+            </div>
+          ))}
+          {error && <div style={{ color: 'var(--danger-color)', fontSize: '13px' }}>{error}</div>}
+          <button className="btn-primary" type="submit" disabled={loading} style={{ marginTop: '8px' }}>{loading ? 'Adding...' : 'Add PC'}</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Panel ──────────────────────────────────────────────────────────────
+function AdminPanel({ onBack }: { onBack: () => void }) {
+  const callApi = useApi();
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' });
+  const [addError, setAddError] = useState('');
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await callApi('/admin/users');
+      setUsers(await res.json());
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  const addUser = async (e: React.FormEvent) => {
+    e.preventDefault(); setAddError('');
+    try {
+      const res = await callApi('/admin/users', { method: 'POST', body: JSON.stringify(newUser) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setNewUser({ username: '', password: '', role: 'user' });
+      setShowAdd(false);
+      fetchUsers();
+    } catch (err: any) { setAddError(err.message); }
+  };
+
+  const deleteUser = async (id: string) => {
+    if (!confirm('Supprimer cet utilisateur ?')) return;
+    await callApi(`/admin/users/${id}`, { method: 'DELETE' });
+    fetchUsers();
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>← Back</button>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px' }}><Shield size={20} /> Admin Panel</h2>
+      </div>
+
+      <div className="card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>Users ({users.length})</h3>
+          <button className="btn-secondary" onClick={() => setShowAdd(!showAdd)} style={{ padding: '8px 16px', fontSize: '13px', width: 'auto' }}>
+            <Plus size={15} /> Create
+          </button>
+        </div>
+
+        {showAdd && (
+          <form onSubmit={addUser} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px', padding: '16px', background: 'var(--surface-light)', borderRadius: 'var(--radius-card)' }}>
+            <input className="input" style={{ paddingLeft: '20px' }} placeholder="Username" value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} required />
+            <input className="input" style={{ paddingLeft: '20px' }} placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} required />
+            <select className="input" style={{ paddingLeft: '20px' }} value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value })}>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+            {addError && <div style={{ color: 'var(--danger-color)', fontSize: '13px' }}>{addError}</div>}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+              <button className="btn-primary" type="submit" style={{ flex: 1 }}>Create</button>
+              <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary" style={{ flex: 1 }}>Cancel</button>
+            </div>
+          </form>
+        )}
+
+        {loading ? <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>Loading...</div> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {users.map(u => (
+              <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'var(--surface-light)', borderRadius: 'var(--radius-sm)' }}>
+                <div>
+                  <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
+                    {u.username}
+                    {u.role === 'admin' && <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: 'var(--text-primary)', padding: '2px 8px', borderRadius: 'var(--radius-pill)' }}>ADMIN</span>}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{u.pcCount} PC(s)</div>
+                </div>
+                {u.role !== 'admin' && (
+                  <button onClick={() => deleteUser(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger-color)' }}>
+                    <Trash2 size={18} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard() {
+  const { user, logout } = useAuth();
+  const callApi = useApi();
+  const [pcs, setPcs] = useState<PC[]>(user?.pcs || []);
+  const [showAddPC, setShowAddPC] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [selectedPC, setSelectedPC] = useState<PC | null>(pcs.length > 0 ? pcs[0] : null);
+
+  const deletePC = async (id: string) => {
+    if (!confirm('Supprimer ce PC ?')) return;
+    await callApi(`/pcs/${id}`, { method: 'DELETE' });
+    const newPcs = pcs.filter(p => p.id !== id);
+    setPcs(newPcs);
+    if (selectedPC?.id === id) setSelectedPC(newPcs.length > 0 ? newPcs[0] : null);
+  };
+
+  if (showAdmin) return <div className="container"><AdminPanel onBack={() => setShowAdmin(false)} /></div>;
+
+  return (
+    <div className="container" style={{ padding: '24px 24px 100px 24px', minHeight: '100vh', overflowY: 'auto' }}>
+      
+      <div className="profile-header">
+        <div className="profile-info">
+          <h2 style={{ margin: 0, fontSize: '28px' }}>Hello, {user?.username}</h2>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>What you want do today?</span>
+        </div>
+        <div className="avatar">
+          {user?.username.charAt(0).toUpperCase()}
+        </div>
+      </div>
+
+      <div className="input-wrapper" style={{ marginTop: '16px' }}>
+        <span className="input-icon"><Server size={20} /></span>
+        <input className="input" placeholder="Search for PCs" />
+      </div>
+
+      <div className="category-pills">
+        {pcs.map((pc) => (
+          <div key={pc.id} className={`pill ${selectedPC?.id === pc.id ? 'active' : ''}`} onClick={() => setSelectedPC(pc)}>
+            {pc.name}
+          </div>
+        ))}
+        <div className="pill" onClick={() => setShowAddPC(true)} style={{ borderStyle: 'dashed' }}>
+          + Add PC
+        </div>
+      </div>
+
+      {pcs.length === 0 ? (
+        <div className="card" style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Server size={48} style={{ color: 'var(--border-strong)', marginBottom: '16px' }} />
+          <div className="card-title">No PCs Configured</div>
+          <div className="card-status" style={{ textAlign: 'center', marginBottom: '24px' }}>Add your first PC to control it remotely.</div>
+          <button className="btn-primary" onClick={() => setShowAddPC(true)}>+ Add PC</button>
+        </div>
+      ) : (
+        selectedPC && <PCCard pc={selectedPC} onDelete={deletePC} />
+      )}
+
+      {showAddPC && <AddPCModal onAdd={(pc) => { setPcs([...pcs, pc]); setSelectedPC(pc); setShowAddPC(false); }} onClose={() => setShowAddPC(false)} />}
+
+      <div className="bottom-nav">
+        <div className="nav-item active"><Shield size={24} onClick={() => user?.role === 'admin' && setShowAdmin(true)} style={{ color: user?.role === 'admin' ? 'inherit' : 'var(--border-subtle)' }} /></div>
+        <div className="nav-item"><MonitorSmartphone size={24} style={{ color: 'var(--text-primary)' }} /></div>
+        <div className="nav-item"><LogOut size={24} onClick={logout} /></div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function AppContent() {
+  const { user } = useAuth();
+  return user ? <Dashboard /> : <LoginPage />;
+}
+
+export default function App() {
+  return <AuthProvider><AppContent /></AuthProvider>;
+}
