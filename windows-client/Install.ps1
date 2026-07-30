@@ -23,7 +23,21 @@ if ([string]::IsNullOrWhiteSpace($ApiKey)) {
 
 # 3. Mettre à jour appsettings.json
 $AppDir = $PSScriptRoot
-$AppsettingsFile = Join-Path $AppDir "appsettings.json"
+$DistDir = Join-Path $AppDir "dist"
+$ZipFile = Join-Path $AppDir "dist.zip"
+
+if (!(Test-Path $DistDir)) {
+    if (Test-Path $ZipFile) {
+        Write-Host "Extraction de l'application..." -ForegroundColor Yellow
+        Expand-Archive -Path $ZipFile -DestinationPath $AppDir -Force
+    } else {
+        Write-Error "Le dossier 'dist' contenant l'application compilee est introuvable."
+        Pause
+        exit
+    }
+}
+
+$AppsettingsFile = Join-Path $DistDir "appsettings.json"
 
 $config = @{
     "Logging" = @{
@@ -38,14 +52,15 @@ $config = @{
 
 $config | ConvertTo-Json -Depth 5 | Out-File -FilePath $AppsettingsFile -Encoding utf8
 
-# 4. Compilation de l'application
-Write-Host "Compilation de l'application en cours..." -ForegroundColor Yellow
+# 4. Installation des fichiers
+Write-Host "Installation des fichiers en cours..." -ForegroundColor Yellow
 $PublishDir = "C:\RemoteWOL_Service"
 Remove-Item -Path $PublishDir -Recurse -Force -ErrorAction SilentlyContinue
-Start-Process -FilePath "dotnet" -ArgumentList "publish `"$AppDir\PcRemoteClient.csproj`" -c Release -r win-x64 --self-contained -o `"$PublishDir`"" -Wait -NoNewWindow
+New-Item -ItemType Directory -Force -Path $PublishDir | Out-Null
+Copy-Item -Path "$DistDir\*" -Destination $PublishDir -Recurse -Force
 
 if (!(Test-Path "$PublishDir\PcRemoteClient.exe")) {
-    Write-Error "La compilation a echoue."
+    Write-Error "L'installation a echoue, fichier executable manquant."
     Pause
     exit
 }
