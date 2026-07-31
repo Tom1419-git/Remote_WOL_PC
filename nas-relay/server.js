@@ -254,12 +254,22 @@ app.all('/relay/*', authMiddleware, async (req, res) => {
 
   // ── Commandes relayées vers le PC ─────────────────────────────────────────
   try {
-    const targetIp = pc.ip;
-    const result = await reachPc(targetIp, pc.apiKey, commandPath, Object.keys(payload).length > 0 ? payload : null);
+    let result;
+    try {
+      result = await reachPc(pc.ip, pc.apiKey, commandPath, Object.keys(payload).length > 0 ? payload : null);
+    } catch (err) {
+      // Fallback on wolIp if it's a public IP (useful for remote friends)
+      if (pc.wolIp && !pc.wolIp.endsWith('.255') && pc.wolIp !== pc.ip) {
+        console.log(`Fallback for ${pc.name}: trying public IP ${pc.wolIp}`);
+        result = await reachPc(pc.wolIp, pc.apiKey, commandPath, Object.keys(payload).length > 0 ? payload : null);
+      } else {
+        throw err;
+      }
+    }
 
     res.status(result.status).json(result.data);
   } catch (err) {
-    if (err.name === 'TimeoutError')
+    if (err.name === 'TimeoutError' || err.message.includes('fetch'))
       res.status(400).json({ error: 'Le PC ne repond pas. Est-il allume et le port ouvert ?' });
     else
       res.status(400).json({ error: `Impossible de joindre le PC. L'application Windows est-elle lancee ?` });
