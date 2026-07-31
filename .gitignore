@@ -10,3 +10,7 @@ local-wol-relay/
 *.py
 windows-credential-provider/
 GitHub_Release/
+node_modules/
+dist/
+bin/
+obj/

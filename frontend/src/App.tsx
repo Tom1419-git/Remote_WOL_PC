@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw, Moon } from 'lucide-react';
+import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw, Moon, Volume2, VolumeX, Volume1, Play, SkipBack, SkipForward, MonitorOff, Mic, MicOff, Gamepad2, Settings, Headphones, Speaker, MessageSquare } from 'lucide-react';
 import './index.css';
 
 const API = '';  // same origin via nginx proxy
@@ -123,6 +123,15 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState<'power' | 'media' | 'system' | 'apps'>('power');
+  const [audioDevices, setAudioDevices] = useState<any[]>([]);
+  const [micMuted, setMicMuted] = useState(false);
+  const [apps, setApps] = useState<{name: string, path: string}[]>(() => {
+    try { return JSON.parse(localStorage.getItem(`rwol_apps_${pc.id}`) || '[]'); } catch { return []; }
+  });
+  const [showAddApp, setShowAddApp] = useState(false);
+  const [newApp, setNewApp] = useState({name: '', path: ''});
 
   const checkStatus = useCallback(async () => {
     setStatus('checking');
@@ -134,16 +143,35 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
 
   useEffect(() => { checkStatus(); const t = setInterval(checkStatus, 15000); return () => clearInterval(t); }, [checkStatus]);
 
-  const sendCommand = async (cmd: string) => {
+  const fetchAudioDevices = async () => {
+    if (status !== 'online') return;
+    try {
+      const res = await callApi('/relay/audio/devices', { method: 'POST', body: JSON.stringify({ pcId: pc.id }) });
+      if (res.ok) setAudioDevices(await res.json());
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    if (activeTab === 'system' && status === 'online') fetchAudioDevices();
+  }, [activeTab, status]);
+
+  const saveApps = (newApps: any[]) => {
+    setApps(newApps);
+    localStorage.setItem(`rwol_apps_${pc.id}`, JSON.stringify(newApps));
+  };
+
+  const sendCommand = async (cmd: string, payload: any = null) => {
     setActionLoading(cmd); setFeedback(null);
     try {
       const endpoint = cmd === 'wake' ? '/relay/wake' : `/relay/${cmd}`;
-      const res = await callApi(endpoint, { method: 'POST', body: JSON.stringify({ pcId: pc.id }) });
+      const res = await callApi(endpoint, { method: 'POST', body: JSON.stringify({ pcId: pc.id, ...payload }) });
       const data = await res.json();
       if (res.ok) {
-        const labels: Record<string, string> = { lock: '🔒 Locked', shutdown: '⚡ Shutting down', sleep: '😴 Sleeping', unlock: '🔓 Unlocked', wake: '🟢 WOL sent' };
-        setFeedback({ msg: labels[cmd] || '✅ OK', ok: true });
-        if (cmd === 'lock' || cmd === 'unlock') setTimeout(checkStatus, 3000);
+        const labels: Record<string, string> = { lock: '🔒 Locked', shutdown: '⚡ Shutting down', sleep: '😴 Sleeping', wake: '🟢 WOL sent' };
+        setFeedback({ msg: labels[cmd] || data.message || '✅ Action réussie', ok: true });
+        if (cmd === 'lock' || cmd === 'shutdown' || cmd === 'sleep') setTimeout(checkStatus, 3000);
+        if (cmd === 'audio/toggle-mic') setMicMuted(data.isMuted);
+        if (cmd === 'audio/set-device') fetchAudioDevices(); // refresh to show new default
       } else {
         setFeedback({ msg: data.error || 'Erreur inconnue', ok: false });
       }
@@ -155,7 +183,7 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
     }
   };
 
-  const actions = [
+  const powerActions = [
     { cmd: 'wake', icon: <Power size={24} />, label: 'Wake', color: '#ffffff' },
     { cmd: 'lock', icon: <Lock size={24} />, label: 'Lock', color: '#ffffff' },
     { cmd: 'sleep', icon: <Moon size={24} />, label: 'Sleep', color: '#ffffff' },
@@ -179,7 +207,7 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
             <RefreshCw size={16} />
           </button>
           <button onClick={() => onEdit(pc)} style={{ background: 'rgba(255,149,0,0.1)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF9500' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <Settings size={16} />
           </button>
           <button onClick={() => onDelete(pc.id)} style={{ background: 'rgba(255,59,48,0.1)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--danger-color)' }}>
             <Trash2 size={16} />
@@ -187,118 +215,216 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
         </div>
       </div>
 
-      <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Quick Actions</h3>
-      <div className="dashboard-grid" style={{ marginTop: '0' }}>
-        {actions.map(({ cmd, icon, label, color }) => (
-          <div key={cmd} className="card card-action" onClick={() => sendCommand(cmd)} style={{ opacity: actionLoading && actionLoading !== cmd ? 0.5 : 1 }}>
-            <div className="card-icon-wrapper" style={{ color: color }}>
-              {actionLoading === cmd ? <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite' }} /> : icon}
-            </div>
-            <div>
-              <div className="card-title">{label}</div>
-              <div className="card-status">{cmd === 'wake' ? 'Send packet' : 'Relay to PC'}</div>
-            </div>
-          </div>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }} className="hide-scrollbar">
+        {[
+          { id: 'power', label: 'Power', icon: <Power size={16} /> },
+          { id: 'media', label: 'Media', icon: <Play size={16} /> },
+          { id: 'system', label: 'System', icon: <MonitorOff size={16} /> },
+          { id: 'apps', label: 'Apps', icon: <Gamepad2 size={16} /> },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`btn-secondary ${activeTab === tab.id ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '24px', flexShrink: 0, background: activeTab === tab.id ? 'var(--accent-color)' : 'var(--surface-light)', color: activeTab === tab.id ? '#fff' : 'var(--text-primary)', border: 'none' }}>
+            {tab.icon} {tab.label}
+          </button>
         ))}
       </div>
 
-      <div style={{ marginTop: '24px' }}>
-        <button 
-          onClick={() => setShowShortcuts(!showShortcuts)} 
-          style={{ width: '100%', background: 'var(--surface-light)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '14px', fontWeight: 500 }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Siri & Raccourcis iOS
-          </span>
-          <span>{showShortcuts ? '▲' : '▼'}</span>
-        </button>
-
-            {showShortcuts && (
-          <div style={{ marginTop: '12px', padding: '16px', background: 'var(--surface-color)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-            <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-              <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>📱 Raccourcis Siri (Voix)</h4>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                Créez un raccourci dans l'application <strong>Raccourcis</strong> sur iPhone avec l'action <strong>Obtenir le contenu de l'URL</strong>. 
-                Dites ensuite <em>"Dis Siri, [Nom du Raccourci]"</em>.
-              </p>
+      {activeTab === 'power' && (
+        <div className="dashboard-grid" style={{ marginTop: '0' }}>
+          {powerActions.map(({ cmd, icon, label, color }) => (
+            <div key={cmd} className="card card-action" onClick={() => sendCommand(cmd)} style={{ opacity: actionLoading && actionLoading !== cmd ? 0.5 : 1 }}>
+              <div className="card-icon-wrapper" style={{ color: color }}>
+                {actionLoading === cmd ? <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite' }} /> : icon}
+              </div>
+              <div>
+                <div className="card-title">{label}</div>
+              </div>
             </div>
+          ))}
+        </div>
+      )}
 
-            <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-              <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>🎨 Widgets d'Écran d'Accueil (Style Apple)</h4>
-              <ul style={{ color: 'var(--text-secondary)', paddingLeft: '16px', lineHeight: '1.5', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <li><strong>Widget Petit (1 bouton)</strong> : Ajoutez le widget "Raccourcis" (Taille Simple) sur votre écran d'accueil et sélectionnez le raccourci de votre choix.</li>
-                <li><strong>Widget Moyen (4 boutons)</strong> :
-                  <ol style={{ paddingLeft: '16px', marginTop: '4px' }}>
-                    <li>Dans l'app Raccourcis, créez un dossier (ex: <em>"Mon PC"</em>).</li>
-                    <li>Créez les 4 raccourcis ci-dessous et déplacez-les dans ce dossier.</li>
-                    <li>Ajoutez le widget <strong>Raccourcis (Taille Moyenne)</strong> sur votre écran d'accueil et configurez-le pour afficher votre dossier.</li>
-                  </ol>
-                </li>
-              </ul>
+      {activeTab === 'media' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px' }}>
+            <button onClick={() => sendCommand('media/vol_down')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><Volume1 size={24} /></button>
+            <button onClick={() => sendCommand('media/vol_mute')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%', color: 'var(--danger-color)' }}><VolumeX size={24} /></button>
+            <button onClick={() => sendCommand('media/vol_up')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><Volume2 size={24} /></button>
+          </div>
+          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px' }}>
+            <button onClick={() => sendCommand('media/prev')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><SkipBack size={24} /></button>
+            <button onClick={() => sendCommand('media/play_pause')} className="btn-primary" style={{ width: '70px', height: '70px', borderRadius: '50%' }}><Play size={32} style={{ marginLeft: '4px' }} /></button>
+            <button onClick={() => sendCommand('media/next')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><SkipForward size={24} /></button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'system' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="card card-action" onClick={() => sendCommand('screen/off')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', padding: '20px' }}>
+            <div className="card-icon-wrapper" style={{ color: '#fff', background: 'rgba(255,255,255,0.1)' }}><MonitorOff size={24} /></div>
+            <div style={{ textAlign: 'left' }}><div className="card-title">Turn Off Screens</div><div className="card-status">Enters dark mode</div></div>
+          </div>
+          
+          <div className="card card-action" onClick={() => sendCommand('audio/toggle-mic')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', padding: '20px' }}>
+            <div className="card-icon-wrapper" style={{ color: micMuted ? 'var(--danger-color)' : '#fff', background: micMuted ? 'rgba(255,59,48,0.1)' : 'rgba(255,255,255,0.1)' }}>
+              {micMuted ? <MicOff size={24} /> : <Mic size={24} />}
             </div>
+            <div style={{ textAlign: 'left' }}><div className="card-title">Microphone</div><div className="card-status">{micMuted ? 'Muted' : 'Active'}</div></div>
+          </div>
 
-            <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Copiez les URLs des actions ci-dessous :</p>
-            {[
-              { label: 'Allumer (WOL)', cmd: 'wake' },
-              { label: 'Verrouiller', cmd: 'lock' },
-              { label: 'Éteindre', cmd: 'shutdown' },
-              { label: 'Mettre en veille', cmd: 'sleep' },
-            ].map(({ label, cmd }) => {
-              const url = `${window.location.origin}/api/shortcut?username=${encodeURIComponent(user?.username || '')}&pcId=${pc.id}&command=${cmd}&key=${encodeURIComponent(pc.apiKey)}`;
-              
-              const handleCopy = () => {
-                const fallbackCopy = (text: string) => {
-                  const textArea = document.createElement("textarea");
-                  textArea.value = text;
-                  textArea.style.top = "0";
-                  textArea.style.left = "0";
-                  textArea.style.position = "fixed";
-                  document.body.appendChild(textArea);
-                  textArea.focus();
-                  textArea.select();
-                  try {
-                    document.execCommand('copy');
-                    setFeedback({ msg: '📋 URL copiée !', ok: true });
-                  } catch (err) {
-                    setFeedback({ msg: '❌ Échec de la copie', ok: false });
+          <div className="card" style={{ padding: '20px', textAlign: 'left' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: 'var(--text-secondary)' }}>Audio Output</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {audioDevices.length === 0 ? <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Aucun périphérique ou PC hors ligne</div> : audioDevices.map(d => (
+                <div key={d.id} onClick={() => sendCommand('audio/set-device', { Id: d.id })} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: d.isDefault ? 'rgba(10,132,255,0.1)' : 'var(--surface-light)', border: d.isDefault ? '1px solid var(--accent-color)' : '1px solid transparent', borderRadius: '12px', cursor: 'pointer' }}>
+                  {d.name.toLowerCase().includes('head') ? <Headphones size={20} /> : <Speaker size={20} />}
+                  <span style={{ fontSize: '14px', flex: 1, color: d.isDefault ? 'var(--accent-color)' : 'var(--text-primary)' }}>{d.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'apps' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="card card-action" onClick={() => sendCommand('discord/mute')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', padding: '20px', background: 'rgba(88, 101, 242, 0.1)', borderColor: 'rgba(88, 101, 242, 0.3)' }}>
+            <div className="card-icon-wrapper" style={{ color: '#5865F2' }}><MessageSquare size={24} /></div>
+            <div style={{ textAlign: 'left' }}><div className="card-title">Discord Mute Toggle</div><div className="card-status">Simulates Ctrl+Shift+M</div></div>
+          </div>
+
+          <h3 style={{ fontSize: '16px', fontWeight: 600, marginTop: '8px' }}>My Apps</h3>
+          <div className="dashboard-grid">
+            {apps.map((app, idx) => (
+              <div key={idx} className="card card-action" style={{ position: 'relative' }}>
+                <button onClick={(e) => { e.stopPropagation(); saveApps(apps.filter((_, i) => i !== idx)); }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,59,48,0.2)', border: 'none', borderRadius: '50%', width: 24, height: 24, color: 'var(--danger-color)', cursor: 'pointer' }}><Trash2 size={12} /></button>
+                <div onClick={() => sendCommand('launch', { Path: app.path })} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <Gamepad2 size={32} style={{ marginBottom: '12px', color: 'var(--accent-color)' }} />
+                  <div className="card-title" style={{ textAlign: 'center' }}>{app.name}</div>
+                </div>
+              </div>
+            ))}
+            <div className="card card-action" onClick={() => setShowAddApp(true)} style={{ borderStyle: 'dashed', background: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <Plus size={32} style={{ marginBottom: '12px', color: 'var(--text-secondary)' }} />
+              <div className="card-title" style={{ color: 'var(--text-secondary)' }}>Add App</div>
+            </div>
+          </div>
+
+          {showAddApp && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
+              <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
+                <h3 style={{ margin: '0 0 16px 0' }}>Add Application</h3>
+                <input className="input" placeholder="App Name (e.g. Steam)" value={newApp.name} onChange={e => setNewApp({...newApp, name: e.target.value})} style={{ marginBottom: '12px', paddingLeft: '16px' }} />
+                <input className="input" placeholder="Path or URL (e.g. steam://, C:\Game.exe)" value={newApp.path} onChange={e => setNewApp({...newApp, path: e.target.value})} style={{ marginBottom: '16px', paddingLeft: '16px' }} />
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button className="btn-primary" style={{ flex: 1 }} onClick={() => { if(newApp.name && newApp.path) { saveApps([...apps, newApp]); setNewApp({name:'', path:''}); setShowAddApp(false); } }}>Save</button>
+                  <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddApp(false)}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'power' && (
+        <div style={{ marginTop: '24px' }}>
+          <button 
+            onClick={() => setShowShortcuts(!showShortcuts)} 
+            style={{ width: '100%', background: 'var(--surface-light)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '14px', fontWeight: 500 }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Siri & Raccourcis iOS
+            </span>
+            <span>{showShortcuts ? '▲' : '▼'}</span>
+          </button>
+
+              {showShortcuts && (
+            <div style={{ marginTop: '12px', padding: '16px', background: 'var(--surface-color)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+              <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+                <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>📱 Raccourcis Siri (Voix)</h4>
+                <p style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                  Créez un raccourci dans l'application <strong>Raccourcis</strong> sur iPhone avec l'action <strong>Obtenir le contenu de l'URL</strong>. 
+                  Dites ensuite <em>"Dis Siri, [Nom du Raccourci]"</em>.
+                </p>
+              </div>
+
+              <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+                <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>🎨 Widgets d'Écran d'Accueil (Style Apple)</h4>
+                <ul style={{ color: 'var(--text-secondary)', paddingLeft: '16px', lineHeight: '1.5', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <li><strong>Widget Petit (1 bouton)</strong> : Ajoutez le widget "Raccourcis" (Taille Simple) sur votre écran d'accueil et sélectionnez le raccourci de votre choix.</li>
+                  <li><strong>Widget Moyen (4 boutons)</strong> :
+                    <ol style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                      <li>Dans l'app Raccourcis, créez un dossier (ex: <em>"Mon PC"</em>).</li>
+                      <li>Créez les 4 raccourcis ci-dessous et déplacez-les dans ce dossier.</li>
+                      <li>Ajoutez le widget <strong>Raccourcis (Taille Moyenne)</strong> sur votre écran d'accueil et configurez-le pour afficher votre dossier.</li>
+                    </ol>
+                  </li>
+                </ul>
+              </div>
+
+              <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Copiez les URLs des actions ci-dessous :</p>
+              {[
+                { label: 'Allumer (WOL)', cmd: 'wake' },
+                { label: 'Verrouiller', cmd: 'lock' },
+                { label: 'Éteindre', cmd: 'shutdown' },
+                { label: 'Mettre en veille', cmd: 'sleep' },
+              ].map(({ label, cmd }) => {
+                const url = `${window.location.origin}/api/shortcut?username=${encodeURIComponent(user?.username || '')}&pcId=${pc.id}&command=${cmd}&key=${encodeURIComponent(pc.apiKey)}`;
+                
+                const handleCopy = () => {
+                  const fallbackCopy = (text: string) => {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.top = "0";
+                    textArea.style.left = "0";
+                    textArea.style.position = "fixed";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                      document.execCommand('copy');
+                      setFeedback({ msg: '📋 URL copiée !', ok: true });
+                    } catch (err) {
+                      setFeedback({ msg: '❌ Échec de la copie', ok: false });
+                    }
+                    document.body.removeChild(textArea);
+                    setTimeout(() => setFeedback(null), 2000);
+                  };
+
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(url)
+                      .then(() => {
+                        setFeedback({ msg: '📋 URL copiée !', ok: true });
+                        setTimeout(() => setFeedback(null), 2000);
+                      })
+                      .catch(() => fallbackCopy(url));
+                  } else {
+                    fallbackCopy(url);
                   }
-                  document.body.removeChild(textArea);
-                  setTimeout(() => setFeedback(null), 2000);
                 };
 
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                  navigator.clipboard.writeText(url)
-                    .then(() => {
-                      setFeedback({ msg: '📋 URL copiée !', ok: true });
-                      setTimeout(() => setFeedback(null), 2000);
-                    })
-                    .catch(() => fallbackCopy(url));
-                } else {
-                  fallbackCopy(url);
-                }
-              };
-
-              return (
-                <div key={cmd} style={{ background: 'var(--surface-light)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontWeight: 600 }}>
-                    {label}
-                    <button 
-                      onClick={handleCopy} 
-                      style={{ background: 'var(--accent-color)', color: 'var(--text-inverse)', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Copier
-                    </button>
+                return (
+                  <div key={cmd} style={{ background: 'var(--surface-light)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontWeight: 600 }}>
+                      {label}
+                      <button 
+                        onClick={handleCopy} 
+                        style={{ background: 'var(--accent-color)', color: 'var(--text-inverse)', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Copier
+                      </button>
+                    </div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-secondary)', overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                      {url}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-secondary)', overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                    {url}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       
       {feedback && (
         <div className="feedback-toast">

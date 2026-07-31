@@ -1,8 +1,5 @@
+using System.Runtime.InteropServices;
 using System.Diagnostics;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,12 +69,14 @@ static string RunCmdCommand(string command, string arguments)
     }
 }
 
+[DllImport("user32.dll")]
+static extern bool LockWorkStation();
+
 app.MapPost("/api/lock", () =>
 {
-    // The service runs as SYSTEM, so LockWorkStation won't affect the user's session.
-    // We trigger the scheduled task 'RemoteWOL_Lock' which runs interactively.
-    var err = RunCmdCommand("schtasks.exe", "/run /tn \"RemoteWOL_Lock\"");
-    if (err != null) return Results.BadRequest(new { error = $"Lock failed: {err}" });
+    // Now that the app runs in the interactive user session, we can call LockWorkStation directly.
+    bool ok = LockWorkStation();
+    if (!ok) return Results.BadRequest(new { error = "LockWorkStation API call failed" });
     return Results.Ok(new { message = "PC Locked" });
 });
 
@@ -100,4 +99,135 @@ app.MapGet("/api/status", () =>
     return Results.Ok(new { status = "online", os = "Windows" });
 });
 
+// --- Media & Volume Controls ---
+[DllImport("user32.dll", SetLastError = true)]
+static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+const int KEYEVENTF_EXTENDEDKEY = 0x0001;
+const int KEYEVENTF_KEYUP = 0x0002;
+
+static void PressKey(byte keyCode)
+{
+    keybd_event(keyCode, 0, KEYEVENTF_EXTENDEDKEY, 0);
+    keybd_event(keyCode, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+}
+
+app.MapPost("/api/media/{action}", (string action) =>
+{
+    byte keyCode = action switch
+    {
+        "play_pause" => 0xB3, // VK_MEDIA_PLAY_PAUSE
+        "next" => 0xB0,       // VK_MEDIA_NEXT_TRACK
+        "prev" => 0xB1,       // VK_MEDIA_PREV_TRACK
+        "vol_up" => 0xAF,     // VK_VOLUME_UP
+        "vol_down" => 0xAE,   // VK_VOLUME_DOWN
+        "vol_mute" => 0xAD,   // VK_VOLUME_MUTE
+        _ => 0
+    };
+
+    if (keyCode == 0) return Results.BadRequest(new { error = "Action inconnue" });
+
+    PressKey(keyCode);
+    return Results.Ok(new { message = $"Media action: {action}" });
+});
+
+// --- Screen Off ---
+[DllImport("user32.dll")]
+static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+const int HWND_BROADCAST = 0xFFFF;
+const uint WM_SYSCOMMAND = 0x0112;
+const int SC_MONITORPOWER = 0xF170;
+
+app.MapPost("/api/screen/off", () =>
+{
+    SendMessage((IntPtr)HWND_BROADCAST, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)2);
+    return Results.Ok(new { message = "Screens turned off" });
+});
+
+// --- App Launcher ---
+app.MapPost("/api/launch", (LaunchRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Path)) return Results.BadRequest(new { error = "Chemin manquant" });
+    
+    try
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = req.Path,
+            UseShellExecute = true
+        });
+        return Results.Ok(new { message = $"Launched: {req.Path}" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = $"Erreur de lancement: {ex.Message}" });
+    }
+});
+
+// --- Discord Hotkey ---
+app.MapPost("/api/discord/mute", () =>
+{
+    // Simulate Ctrl + Shift + M
+    const byte VK_CONTROL = 0x11;
+    const byte VK_SHIFT = 0x10;
+    const byte VK_M = 0x4D;
+
+    keybd_event(VK_CONTROL, 0, KEYEVENTF_EXTENDEDKEY, 0);
+    keybd_event(VK_SHIFT, 0, KEYEVENTF_EXTENDEDKEY, 0);
+    keybd_event(VK_M, 0, KEYEVENTF_EXTENDEDKEY, 0);
+
+    keybd_event(VK_M, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_SHIFT, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_CONTROL, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+
+    return Results.Ok(new { message = "Discord Mute Toggled (Ctrl+Shift+M)" });
+});
+
+// --- Audio Switcher ---
+app.MapGet("/api/audio/devices", () =>
+{
+    try {
+        var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
+        var devices = controller.GetPlaybackDevices(AudioSwitcher.AudioApi.DeviceState.Active)
+            .Select(d => new { id = d.Id, name = d.FullName, isDefault = d.IsDefaultDevice })
+            .ToList();
+        return Results.Ok(devices);
+    } catch (Exception ex) {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+
+app.MapPost("/api/audio/set-device", (SetAudioDeviceRequest req) =>
+{
+    try {
+        var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
+        var device = controller.GetDevice(req.Id);
+        if (device == null) return Results.BadRequest(new { error = "Périphérique introuvable" });
+        
+        device.SetAsDefault();
+        device.SetAsDefaultCommunications();
+        return Results.Ok(new { message = $"Sortie changée vers {device.FullName}" });
+    } catch (Exception ex) {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/audio/toggle-mic", () =>
+{
+    try {
+        var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
+        var mic = controller.DefaultCaptureDevice;
+        if (mic == null) return Results.BadRequest(new { error = "Aucun micro par défaut" });
+        
+        bool isMuted = mic.IsMuted;
+        mic.Mute(!isMuted);
+        return Results.Ok(new { message = !isMuted ? "Microphone désactivé" : "Microphone activé", isMuted = !isMuted });
+    } catch (Exception ex) {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 app.Run();
+
+public record LaunchRequest(string Path);
+public record SetAudioDeviceRequest(Guid Id);

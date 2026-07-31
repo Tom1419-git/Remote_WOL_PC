@@ -162,14 +162,18 @@ app.delete('/admin/users/:userId', authMiddleware, adminMiddleware, (req, res) =
 });
 
 // ─── PC Commands relay ────────────────────────────────────────────────────────
-async function reachPc(ip, apiKey, command) {
-  const method = command === 'status' ? 'GET' : 'POST';
+async function reachPc(ip, apiKey, command, payload = null) {
+  const method = command === 'status' || command.startsWith('audio/devices') ? 'GET' : 'POST';
   const url = `http://${ip}:8085/api/${command}`;
-  const response = await fetch(url, {
+  const options = {
     method,
     headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(5000)
-  });
+  };
+  if (payload && method === 'POST') {
+    options.body = JSON.stringify(payload);
+  }
+  const response = await fetch(url, options);
   const text = await response.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { message: text }; }
@@ -182,7 +186,7 @@ app.get('/api/shortcut', async (req, res) => {
   if (!username || !pcId || !command || !key)
     return res.status(400).json({ error: 'Champs requis manquants' });
 
-  const allowedCommands = ['lock', 'shutdown', 'sleep', 'unlock', 'status', 'wake'];
+  const allowedCommands = ['lock', 'shutdown', 'sleep', 'status', 'wake'];
   if (!allowedCommands.includes(command))
     return res.status(400).json({ error: 'Commande non autorisee' });
 
@@ -217,13 +221,10 @@ app.get('/api/shortcut', async (req, res) => {
   }
 });
 
-app.post('/relay/:command', authMiddleware, async (req, res) => {
-  const { command } = req.params;
-  const { pcId } = req.body;
-
-  const allowedCommands = ['lock', 'shutdown', 'sleep', 'unlock', 'status', 'wake'];
-  if (!allowedCommands.includes(command))
-    return res.status(400).json({ error: 'Commande non autorisée' });
+app.all('/relay/*', authMiddleware, async (req, res) => {
+  const commandPath = req.params[0];
+  // commandPath is everything after /relay/, e.g., "media/play_pause" or "wake"
+  const { pcId, ...payload } = req.body;
 
   const data = loadData();
   const user = data.users.find(u => u.id === req.user.id);
@@ -231,7 +232,7 @@ app.post('/relay/:command', authMiddleware, async (req, res) => {
   if (!pc) return res.status(404).json({ error: 'PC non trouvé dans votre compte' });
 
   // ── Wake-on-LAN (géré ici, sans contacter l'API PC) ──────────────────────
-  if (command === 'wake') {
+  if (commandPath === 'wake') {
     if (!pc.mac || pc.mac === '00:00:00:00:00:00')
       return res.status(400).json({ error: 'Adresse MAC non configuree. Modifiez votre PC et ajoutez l\'adresse MAC.' });
     
@@ -254,14 +255,7 @@ app.post('/relay/:command', authMiddleware, async (req, res) => {
   // ── Commandes relayées vers le PC ─────────────────────────────────────────
   try {
     const targetIp = pc.wolIp ? pc.wolIp : pc.ip;
-    const result = await reachPc(targetIp, pc.apiKey, command);
-
-    // Cas spécial : unlock retourne 503 si le PC n'est pas verrouillé
-    if (command === 'unlock' && result.status === 503) {
-      return res.status(200).json({
-        message: 'PC deja deverrouille ou pas encore sur l\'ecran de verrouillage. Attendez quelques secondes.'
-      });
-    }
+    const result = await reachPc(targetIp, pc.apiKey, commandPath, Object.keys(payload).length > 0 ? payload : null);
 
     res.status(result.status).json(result.data);
   } catch (err) {
