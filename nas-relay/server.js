@@ -176,6 +176,47 @@ async function reachPc(ip, apiKey, command) {
   return { ok: response.ok, status: response.status, data };
 }
 
+// ─── Shortcut Endpoint (GET pour Siri & iOS Raccourcis) ────────────────────────
+app.get('/api/shortcut', async (req, res) => {
+  const { username, pcId, command, key } = req.query;
+  if (!username || !pcId || !command || !key)
+    return res.status(400).json({ error: 'Champs requis manquants' });
+
+  const allowedCommands = ['lock', 'shutdown', 'sleep', 'unlock', 'status', 'wake'];
+  if (!allowedCommands.includes(command))
+    return res.status(400).json({ error: 'Commande non autorisee' });
+
+  const data = loadData();
+  const user = data.users.find(u => u.username === username);
+  const pc = user?.pcs.find(p => p.id === pcId);
+  if (!pc || pc.apiKey !== key)
+    return res.status(401).json({ error: 'Authentification echouee' });
+
+  if (command === 'wake') {
+    if (!pc.mac || pc.mac === '00:00:00:00:00:00')
+      return res.status(400).json({ error: 'MAC manquante' });
+    
+    const options = {};
+    if (pc.wolIp) options.address = pc.wolIp;
+    if (pc.wolPort) options.port = parseInt(pc.wolPort, 10);
+    else options.port = 9;
+    
+    wol.wake(pc.mac, options, (err) => {
+      if (err) res.status(500).json({ error: 'Erreur WOL' });
+      else res.json({ message: 'WOL sent' });
+    });
+    return;
+  }
+
+  try {
+    const targetIp = pc.wolIp ? pc.wolIp : pc.ip;
+    const result = await reachPc(targetIp, pc.apiKey, command);
+    res.status(result.status).json(result.data);
+  } catch (err) {
+    res.status(400).json({ error: 'PC injoignable' });
+  }
+});
+
 app.post('/relay/:command', authMiddleware, async (req, res) => {
   const { command } = req.params;
   const { pcId } = req.body;

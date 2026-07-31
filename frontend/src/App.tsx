@@ -118,9 +118,11 @@ function LoginPage() {
 // ─── PC Dashboard (Refactored PCCard) ───────────────────────────────────────────
 function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => void; onEdit: (pc: PC) => void }) {
   const callApi = useApi();
+  const { user } = useAuth();
   const [status, setStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const checkStatus = useCallback(async () => {
     setStatus('checking');
@@ -197,6 +199,55 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
             </div>
           </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: '24px' }}>
+        <button 
+          onClick={() => setShowShortcuts(!showShortcuts)} 
+          style={{ width: '100%', background: 'var(--surface-light)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '14px', fontWeight: 500 }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Siri & Raccourcis iOS
+          </span>
+          <span>{showShortcuts ? '▲' : '▼'}</span>
+        </button>
+
+        {showShortcuts && (
+          <div style={{ marginTop: '12px', padding: '16px', background: 'var(--surface-color)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+            <p style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+              Pour contrôler votre PC par la voix ou créer des Widgets iOS (style Apple), créez un raccourci dans l'application <strong>Raccourcis</strong> sur iPhone avec l'action <strong>Obtenir le contenu de l'URL</strong> :
+            </p>
+            {[
+              { label: 'Allumer (WOL)', cmd: 'wake' },
+              { label: 'Verrouiller', cmd: 'lock' },
+              { label: 'Éteindre', cmd: 'shutdown' },
+              { label: 'Mettre en veille', cmd: 'sleep' },
+            ].map(({ label, cmd }) => {
+              const url = `${window.location.origin}/api/shortcut?username=${encodeURIComponent(user?.username || '')}&pcId=${pc.id}&command=${cmd}&key=${encodeURIComponent(pc.apiKey)}`;
+              return (
+                <div key={cmd} style={{ background: 'var(--surface-light)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontWeight: 600 }}>
+                    {label}
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(url);
+                        setFeedback({ msg: '📋 URL copiée !', ok: true });
+                        setTimeout(() => setFeedback(null), 2000);
+                      }} 
+                      style={{ background: 'var(--accent-color)', color: 'var(--text-inverse)', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Copier
+                    </button>
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-secondary)', overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                    {url}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       
       {feedback && (
