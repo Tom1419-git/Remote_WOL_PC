@@ -37,7 +37,7 @@ app.Use(async (context, next) =>
     await next();
 });
 
-static string RunCmdCommand(string command, string arguments)
+static string RunCmdCommandAsync(string command, string arguments)
 {
     try
     {
@@ -46,21 +46,9 @@ static string RunCmdCommand(string command, string arguments)
             FileName = command,
             Arguments = arguments,
             CreateNoWindow = true,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
+            UseShellExecute = false
         };
-        using (var process = Process.Start(processInfo))
-        {
-            if (process == null) return "Failed to start process.";
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-            {
-                return $"Code {process.ExitCode}: {error.Trim()} {output.Trim()}";
-            }
-        }
+        Process.Start(processInfo);
         return null;
     }
     catch (Exception ex)
@@ -69,27 +57,23 @@ static string RunCmdCommand(string command, string arguments)
     }
 }
 
-[DllImport("user32.dll")]
-static extern bool LockWorkStation();
-
 app.MapPost("/api/lock", () =>
 {
-    // Now that the app runs in the interactive user session, we can call LockWorkStation directly.
-    bool ok = LockWorkStation();
-    if (!ok) return Results.BadRequest(new { error = "LockWorkStation API call failed" });
+    var err = RunCmdCommandAsync("rundll32.exe", "user32.dll,LockWorkStation");
+    if (err != null) return Results.BadRequest(new { error = $"Lock failed: {err}" });
     return Results.Ok(new { message = "PC Locked" });
 });
 
 app.MapPost("/api/shutdown", () =>
 {
-    var err = RunCmdCommand("shutdown", "/s /t 0");
+    var err = RunCmdCommandAsync("shutdown", "/s /t 0");
     if (err != null) return Results.BadRequest(new { error = $"Shutdown failed: {err}" });
     return Results.Ok(new { message = "PC Shutting down" });
 });
 
 app.MapPost("/api/sleep", () =>
 {
-    var err = RunCmdCommand("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0");
+    var err = RunCmdCommandAsync("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0");
     if (err != null) return Results.BadRequest(new { error = $"Sleep failed: {err}" });
     return Results.Ok(new { message = "PC Sleeping" });
 });
@@ -131,15 +115,19 @@ app.MapPost("/api/media/{action}", (string action) =>
 });
 
 // --- Screen Off ---
-[DllImport("user32.dll")]
-static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+[DllImport("user32.dll", SetLastError = true)]
+static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 const int HWND_BROADCAST = 0xFFFF;
 const uint WM_SYSCOMMAND = 0x0112;
 const int SC_MONITORPOWER = 0xF170;
+const uint SMTO_ABORTIFHUNG = 0x0002;
 
 app.MapPost("/api/screen/off", () =>
 {
-    SendMessage((IntPtr)HWND_BROADCAST, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)2);
+    Task.Run(() => {
+        IntPtr result;
+        SendMessageTimeout((IntPtr)HWND_BROADCAST, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)2, SMTO_ABORTIFHUNG, 1000, out result);
+    });
     return Results.Ok(new { message = "Screens turned off" });
 });
 
