@@ -55,6 +55,8 @@ $config | ConvertTo-Json -Depth 5 | Out-File -FilePath $AppsettingsFile -Encodin
 # 4. Installation des fichiers
 Write-Host "Installation des fichiers en cours..." -ForegroundColor Yellow
 $PublishDir = "C:\RemoteWOL_Service"
+Stop-Process -Name "PcRemoteClient" -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
 Remove-Item -Path $PublishDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $PublishDir | Out-Null
 Copy-Item -Path "$DistDir\*" -Destination $PublishDir -Recurse -Force
