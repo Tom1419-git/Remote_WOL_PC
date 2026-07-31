@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw, Moon } from 'lucide-react';
 import './index.css';
 
 const API = '';  // same origin via nginx proxy
@@ -158,6 +158,7 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
   const actions = [
     { cmd: 'wake', icon: <Power size={24} />, label: 'Wake', color: '#ffffff' },
     { cmd: 'lock', icon: <Lock size={24} />, label: 'Lock', color: '#ffffff' },
+    { cmd: 'sleep', icon: <Moon size={24} />, label: 'Sleep', color: '#ffffff' },
     { cmd: 'shutdown', icon: <MonitorSmartphone size={24} />, label: 'Shutdown', color: '#ff3b30' },
   ];
 
