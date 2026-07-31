@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Diagnostics;
+using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -227,12 +228,16 @@ app.MapPost("/api/audio/toggle-mic", () =>
 {
     try {
         var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
-        var mic = controller.DefaultCaptureDevice;
-        if (mic == null) return Results.BadRequest(new { error = "Aucun micro par défaut" });
+        var devices = controller.GetCaptureDevices(AudioSwitcher.AudioApi.DeviceState.Active);
+        if (!devices.Any()) return Results.BadRequest(new { error = "Aucun micro trouvé" });
         
-        bool isMuted = mic.IsMuted;
-        mic.Mute(!isMuted);
-        return Results.Ok(new { message = !isMuted ? "Microphone désactivé" : "Microphone activé", isMuted = !isMuted });
+        bool shouldMute = devices.Any(d => !d.IsMuted);
+        foreach (var device in devices)
+        {
+            device.Mute(shouldMute);
+        }
+        
+        return Results.Ok(new { message = shouldMute ? "Microphone désactivé" : "Microphone activé", isMuted = shouldMute });
     } catch (Exception ex) {
         return Results.BadRequest(new { error = ex.Message });
     }
