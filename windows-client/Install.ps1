@@ -29,7 +29,7 @@ $ZipFile = Join-Path $AppDir "dist.zip"
 if (!(Test-Path $DistDir)) {
     if (Test-Path $ZipFile) {
         Write-Host "Extraction de l'application..." -ForegroundColor Yellow
-        Expand-Archive -Path $ZipFile -DestinationPath $AppDir -Force
+        Expand-Archive -Path $ZipFile -DestinationPath $DistDir -Force
     } else {
         Write-Error "Le dossier 'dist' contenant l'application compilee est introuvable."
         Pause
