@@ -254,7 +254,7 @@ app.all('/relay/*', authMiddleware, async (req, res) => {
 
   // ── Commandes relayées vers le PC ─────────────────────────────────────────
   try {
-    const targetIp = pc.wolIp ? pc.wolIp : pc.ip;
+    const targetIp = pc.ip;
     const result = await reachPc(targetIp, pc.apiKey, commandPath, Object.keys(payload).length > 0 ? payload : null);
 
     res.status(result.status).json(result.data);
