@@ -215,14 +215,14 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }} className="hide-scrollbar">
+      <div className="tab-row">
         {[
           { id: 'power', label: 'Power', icon: <Power size={16} /> },
           { id: 'media', label: 'Media', icon: <Play size={16} /> },
           { id: 'system', label: 'System', icon: <MonitorOff size={16} /> },
           { id: 'apps', label: 'Apps', icon: <Gamepad2 size={16} /> },
         ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`btn-secondary ${activeTab === tab.id ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '24px', flexShrink: 0, background: activeTab === tab.id ? 'var(--accent-color)' : 'var(--surface-light)', color: activeTab === tab.id ? '#fff' : 'var(--text-primary)', border: 'none' }}>
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}>
             {tab.icon} {tab.label}
           </button>
         ))}
