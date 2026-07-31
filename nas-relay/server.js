@@ -214,8 +214,16 @@ app.get('/api/shortcut', async (req, res) => {
   }
 
   try {
-    const targetIp = pc.wolIp ? pc.wolIp : pc.ip;
-    const result = await reachPc(targetIp, pc.apiKey, command);
+    let result;
+    try {
+      result = await reachPc(pc.ip, pc.apiKey, command);
+    } catch (err) {
+      if (pc.wolIp && !pc.wolIp.endsWith('.255') && pc.wolIp !== pc.ip) {
+        result = await reachPc(pc.wolIp, pc.apiKey, command);
+      } else {
+        throw err;
+      }
+    }
     res.status(result.status).json(result.data);
   } catch (err) {
     res.status(400).json({ error: 'PC injoignable' });
