@@ -429,7 +429,7 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, token, login, logout } = useAuth();
   const callApi = useApi();
   const [pcs, setPcs] = useState<PC[]>(user?.pcs || []);
   const [showAddPC, setShowAddPC] = useState(false);
@@ -443,15 +443,26 @@ function Dashboard() {
     const newPcs = pcs.filter(p => p.id !== id);
     setPcs(newPcs);
     if (selectedPC?.id === id) setSelectedPC(newPcs.length > 0 ? newPcs[0] : null);
+    
+    if (user) {
+      const updatedUser = { ...user, pcs: newPcs };
+      login(updatedUser, token || '');
+    }
   };
 
   const handleSavePC = (savedPc: PC) => {
+    let newPcs;
     if (pcToEdit) {
-      setPcs(pcs.map(p => p.id === savedPc.id ? savedPc : p));
-      if (selectedPC?.id === savedPc.id) setSelectedPC(savedPc);
+      newPcs = pcs.map(p => p.id === savedPc.id ? savedPc : p);
     } else {
-      setPcs([...pcs, savedPc]);
-      setSelectedPC(savedPc);
+      newPcs = [...pcs, savedPc];
+    }
+    setPcs(newPcs);
+    setSelectedPC(savedPc);
+    
+    if (user) {
+      const updatedUser = { ...user, pcs: newPcs };
+      login(updatedUser, token || '');
     }
     setShowAddPC(false);
     setPcToEdit(null);
