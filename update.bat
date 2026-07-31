@@ -27,7 +27,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: Verification de Dotnet SDK
-where dotnet >nul 2>nul
+dotnet --list-sdks | findstr /C:"8." >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo [ATTENTION] Le SDK .NET 8 n'est pas installe sur cet ordinateur.
     set /p "install_dotnet=Voulez-vous installer le SDK .NET 8 automatiquement ? (O/N) : "
@@ -67,6 +67,11 @@ copy /Y "%LOCALAPPDATA%\RemoteWOL\appsettings.json" "%TEMP%\appsettings_backup.j
 
 cd windows-client
 dotnet publish -c Release -r win-x64 --self-contained false -o "%LOCALAPPDATA%\RemoteWOL"
+if %ERRORLEVEL% neq 0 (
+    echo [ERREUR] La compilation a echoue. Veuillez lire l'erreur ci-dessus.
+    pause
+    exit /b
+)
 cd ..
 
 :: Restauration de la configuration
