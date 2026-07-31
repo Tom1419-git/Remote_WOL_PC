@@ -40,35 +40,58 @@ app.Use(async (context, next) =>
     await next();
 });
 
-void RunCmdCommand(string command, string arguments)
+static string RunCmdCommand(string command, string arguments)
 {
-    var processInfo = new ProcessStartInfo
+    try
     {
-        FileName = command,
-        Arguments = arguments,
-        CreateNoWindow = true,
-        UseShellExecute = false
-    };
-    Process.Start(processInfo);
+        var processInfo = new ProcessStartInfo
+        {
+            FileName = command,
+            Arguments = arguments,
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        using (var process = Process.Start(processInfo))
+        {
+            if (process == null) return "Failed to start process.";
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                return $"Code {process.ExitCode}: {error.Trim()} {output.Trim()}";
+            }
+        }
+        return null;
+    }
+    catch (Exception ex)
+    {
+        return $"Exception: {ex.Message}";
+    }
 }
 
 app.MapPost("/api/lock", () =>
 {
     // The service runs as SYSTEM, so LockWorkStation won't affect the user's session.
     // We trigger the scheduled task 'RemoteWOL_Lock' which runs interactively.
-    RunCmdCommand("schtasks.exe", "/run /tn \"RemoteWOL_Lock\"");
+    var err = RunCmdCommand("schtasks.exe", "/run /tn \"RemoteWOL_Lock\"");
+    if (err != null) return Results.BadRequest(new { error = $"Lock failed: {err}" });
     return Results.Ok(new { message = "PC Locked" });
 });
 
 app.MapPost("/api/shutdown", () =>
 {
-    RunCmdCommand("shutdown", "/s /t 0");
+    var err = RunCmdCommand("shutdown", "/s /t 0");
+    if (err != null) return Results.BadRequest(new { error = $"Shutdown failed: {err}" });
     return Results.Ok(new { message = "PC Shutting down" });
 });
 
 app.MapPost("/api/sleep", () =>
 {
-    RunCmdCommand("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0");
+    var err = RunCmdCommand("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0");
+    if (err != null) return Results.BadRequest(new { error = $"Sleep failed: {err}" });
     return Results.Ok(new { message = "PC Sleeping" });
 });
 
