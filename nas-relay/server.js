@@ -170,8 +170,9 @@ async function reachPc(ip, apiKey, command, payload = null) {
     headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(5000)
   };
-  if (payload && method === 'POST') {
-    options.body = JSON.stringify(payload);
+  
+  if (method === 'POST') {
+    options.body = payload ? JSON.stringify(payload) : "{}";
   }
   const response = await fetch(url, options);
   const text = await response.text();
