@@ -3,6 +3,9 @@ setlocal enabledelayedexpansion
 title Mise a jour de RemoteWOL
 color 0B
 
+:: S'assurer que le script s'execute dans son propre dossier (utile si lance en tant qu'Admin)
+cd /d "%~dp0"
+
 echo ==================================================
 echo   Mise a jour automatique de RemoteWOL
 echo ==================================================
