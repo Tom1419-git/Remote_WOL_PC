@@ -214,7 +214,7 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
           <span>{showShortcuts ? '▲' : '▼'}</span>
         </button>
 
-        {showShortcuts && (
+            {showShortcuts && (
           <div style={{ marginTop: '12px', padding: '16px', background: 'var(--surface-color)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
             <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
               <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>📱 Raccourcis Siri (Voix)</h4>
@@ -246,16 +246,45 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
               { label: 'Mettre en veille', cmd: 'sleep' },
             ].map(({ label, cmd }) => {
               const url = `${window.location.origin}/api/shortcut?username=${encodeURIComponent(user?.username || '')}&pcId=${pc.id}&command=${cmd}&key=${encodeURIComponent(pc.apiKey)}`;
+              
+              const handleCopy = () => {
+                const fallbackCopy = (text: string) => {
+                  const textArea = document.createElement("textarea");
+                  textArea.value = text;
+                  textArea.style.top = "0";
+                  textArea.style.left = "0";
+                  textArea.style.position = "fixed";
+                  document.body.appendChild(textArea);
+                  textArea.focus();
+                  textArea.select();
+                  try {
+                    document.execCommand('copy');
+                    setFeedback({ msg: '📋 URL copiée !', ok: true });
+                  } catch (err) {
+                    setFeedback({ msg: '❌ Échec de la copie', ok: false });
+                  }
+                  document.body.removeChild(textArea);
+                  setTimeout(() => setFeedback(null), 2000);
+                };
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(url)
+                    .then(() => {
+                      setFeedback({ msg: '📋 URL copiée !', ok: true });
+                      setTimeout(() => setFeedback(null), 2000);
+                    })
+                    .catch(() => fallbackCopy(url));
+                } else {
+                  fallbackCopy(url);
+                }
+              };
+
               return (
                 <div key={cmd} style={{ background: 'var(--surface-light)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontWeight: 600 }}>
                     {label}
                     <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(url);
-                        setFeedback({ msg: '📋 URL copiée !', ok: true });
-                        setTimeout(() => setFeedback(null), 2000);
-                      }} 
+                      onClick={handleCopy} 
                       style={{ background: 'var(--accent-color)', color: 'var(--text-inverse)', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
                     >
                       Copier
