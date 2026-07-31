@@ -216,9 +216,29 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
 
         {showShortcuts && (
           <div style={{ marginTop: '12px', padding: '16px', background: 'var(--surface-color)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-            <p style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-              Pour contrôler votre PC par la voix ou créer des Widgets iOS (style Apple), créez un raccourci dans l'application <strong>Raccourcis</strong> sur iPhone avec l'action <strong>Obtenir le contenu de l'URL</strong> :
-            </p>
+            <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>📱 Raccourcis Siri (Voix)</h4>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                Créez un raccourci dans l'application <strong>Raccourcis</strong> sur iPhone avec l'action <strong>Obtenir le contenu de l'URL</strong>. 
+                Dites ensuite <em>"Dis Siri, [Nom du Raccourci]"</em>.
+              </p>
+            </div>
+
+            <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <h4 style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>🎨 Widgets d'Écran d'Accueil (Style Apple)</h4>
+              <ul style={{ color: 'var(--text-secondary)', paddingLeft: '16px', lineHeight: '1.5', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <li><strong>Widget Petit (1 bouton)</strong> : Ajoutez le widget "Raccourcis" (Taille Simple) sur votre écran d'accueil et sélectionnez le raccourci de votre choix.</li>
+                <li><strong>Widget Moyen (4 boutons)</strong> :
+                  <ol style={{ paddingLeft: '16px', marginTop: '4px' }}>
+                    <li>Dans l'app Raccourcis, créez un dossier (ex: <em>"Mon PC"</em>).</li>
+                    <li>Créez les 4 raccourcis ci-dessous et déplacez-les dans ce dossier.</li>
+                    <li>Ajoutez le widget <strong>Raccourcis (Taille Moyenne)</strong> sur votre écran d'accueil et configurez-le pour afficher votre dossier.</li>
+                  </ol>
+                </li>
+              </ul>
+            </div>
+
+            <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Copiez les URLs des actions ci-dessous :</p>
             {[
               { label: 'Allumer (WOL)', cmd: 'wake' },
               { label: 'Verrouiller', cmd: 'lock' },
