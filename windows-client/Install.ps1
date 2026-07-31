@@ -92,8 +92,14 @@ if ([string]::IsNullOrWhiteSpace($LoggedUser)) {
     $LoggedUser = $env:USERNAME
 }
 
+try {
+    $UserSID = (New-Object System.Security.Principal.NTAccount($LoggedUser)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+} catch {
+    $UserSID = $LoggedUser
+}
+
 $LockAction = New-ScheduledTaskAction -Execute "rundll32.exe" -Argument "user32.dll,LockWorkStation"
-$LockPrincipal = New-ScheduledTaskPrincipal -UserId $LoggedUser -LogonType Interactive
+$LockPrincipal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive
 $LockSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $LockTaskName -Action $LockAction -Principal $LockPrincipal -Settings $LockSettings -Description "Tache de verrouillage interactif pour RemoteWOL" | Out-Null
 
