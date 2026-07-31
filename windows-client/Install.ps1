@@ -86,7 +86,7 @@ try {
     $UserSID = $LoggedUser
 }
 
-$Action = New-ScheduledTaskAction -Execute "$TargetDir\PcRemoteClient.exe" -WorkingDirectory $TargetDir
+$Action = New-ScheduledTaskAction -Execute "$PublishDir\PcRemoteClient.exe" -WorkingDirectory $PublishDir
 $Trigger = New-ScheduledTaskTrigger -AtLogon
 $Principal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive -RunLevel Highest
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
