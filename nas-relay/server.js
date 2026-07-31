@@ -212,7 +212,8 @@ app.post('/relay/:command', authMiddleware, async (req, res) => {
 
   // ── Commandes relayées vers le PC ─────────────────────────────────────────
   try {
-    const result = await reachPc(pc.ip, pc.apiKey, command);
+    const targetIp = pc.wolIp ? pc.wolIp : pc.ip;
+    const result = await reachPc(targetIp, pc.apiKey, command);
 
     // Cas spécial : unlock retourne 503 si le PC n'est pas verrouillé
     if (command === 'unlock' && result.status === 503) {
@@ -224,9 +225,9 @@ app.post('/relay/:command', authMiddleware, async (req, res) => {
     res.status(result.status).json(result.data);
   } catch (err) {
     if (err.name === 'TimeoutError')
-      res.status(504).json({ error: 'Le PC ne repond pas. Est-il allume ?' });
+      res.status(400).json({ error: 'Le PC ne repond pas. Est-il allume et le port ouvert ?' });
     else
-      res.status(502).json({ error: `Impossible de joindre le PC. Le service tourne-t-il ?` });
+      res.status(400).json({ error: `Impossible de joindre le PC. L'application Windows est-elle lancee ?` });
   }
 });
 

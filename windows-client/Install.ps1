@@ -86,8 +86,14 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Pr
 Write-Host "Creation de la tache de verrouillage (Session utilisateur)..." -ForegroundColor Yellow
 $LockTaskName = "RemoteWOL_Lock"
 Unregister-ScheduledTask -TaskName $LockTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+$LoggedUser = (Get-CimInstance Win32_ComputerSystem).UserName
+if ([string]::IsNullOrWhiteSpace($LoggedUser)) {
+    $LoggedUser = $env:USERNAME
+}
+
 $LockAction = New-ScheduledTaskAction -Execute "rundll32.exe" -Argument "user32.dll,LockWorkStation"
-$LockPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+$LockPrincipal = New-ScheduledTaskPrincipal -UserId $LoggedUser -LogonType Interactive
 $LockSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $LockTaskName -Action $LockAction -Principal $LockPrincipal -Settings $LockSettings -Description "Tache de verrouillage interactif pour RemoteWOL" | Out-Null
 
