@@ -114,6 +114,20 @@ app.MapPost("/api/media/{action}", (string action) =>
     return Results.Ok(new { message = $"Media action: {action}" });
 });
 
+app.MapPost("/api/media/volume", (SetVolumeRequest req) =>
+{
+    try {
+        var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
+        var device = controller.DefaultPlaybackDevice;
+        if (device == null) return Results.BadRequest(new { error = "Aucun périphérique par défaut" });
+        
+        device.Volume = req.Level;
+        return Results.Ok(new { message = $"Volume réglé à {req.Level}%" });
+    } catch (Exception ex) {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 // --- Screen Off ---
 [DllImport("user32.dll", SetLastError = true)]
 static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
@@ -129,6 +143,15 @@ app.MapPost("/api/screen/off", () =>
         SendMessageTimeout((IntPtr)HWND_BROADCAST, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)2, SMTO_ABORTIFHUNG, 1000, out result);
     });
     return Results.Ok(new { message = "Screens turned off" });
+});
+
+app.MapPost("/api/screen/on", () =>
+{
+    Task.Run(() => {
+        IntPtr result;
+        SendMessageTimeout((IntPtr)HWND_BROADCAST, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)(-1), SMTO_ABORTIFHUNG, 1000, out result);
+    });
+    return Results.Ok(new { message = "Screens turned on" });
 });
 
 // --- App Launcher ---
@@ -219,3 +242,4 @@ app.Run();
 
 public record LaunchRequest(string Path);
 public record SetAudioDeviceRequest(Guid Id);
+public record SetVolumeRequest(int Level);

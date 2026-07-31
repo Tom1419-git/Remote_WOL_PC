@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw, Moon, Volume2, VolumeX, Volume1, Play, SkipBack, SkipForward, MonitorOff, Mic, MicOff, Gamepad2, Settings, Headphones, Speaker, MessageSquare } from 'lucide-react';
+import { Power, Lock, MonitorSmartphone, Plus, Trash2, Server, LogOut, Shield, Eye, EyeOff, RefreshCw, Moon, VolumeX, Play, Pause, SkipBack, SkipForward, MonitorOff, Monitor, Mic, MicOff, Gamepad2, Settings, Headphones, Speaker, MessageSquare, Loader2 } from 'lucide-react';
 import './index.css';
 
 const API = '';  // same origin via nginx proxy
@@ -127,6 +127,8 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
   const [activeTab, setActiveTab] = useState<'power' | 'media' | 'system' | 'apps'>('power');
   const [audioDevices, setAudioDevices] = useState<any[]>([]);
   const [micMuted, setMicMuted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [screenOff, setScreenOff] = useState(false);
   const [apps, setApps] = useState<{name: string, path: string}[]>(() => {
     try { return JSON.parse(localStorage.getItem(`rwol_apps_${pc.id}`) || '[]'); } catch { return []; }
   });
@@ -172,6 +174,9 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
         if (cmd === 'lock' || cmd === 'shutdown' || cmd === 'sleep') setTimeout(checkStatus, 3000);
         if (cmd === 'audio/toggle-mic') setMicMuted(data.isMuted);
         if (cmd === 'audio/set-device') fetchAudioDevices(); // refresh to show new default
+        if (cmd === 'media/play_pause') setIsPlaying(prev => !prev);
+        if (cmd === 'screen/off') setScreenOff(true);
+        if (cmd === 'screen/on') setScreenOff(false);
       } else {
         setFeedback({ msg: data.error || 'Erreur inconnue', ok: false });
       }
@@ -245,24 +250,44 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
 
       {activeTab === 'media' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px' }}>
-            <button onClick={() => sendCommand('media/vol_down')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><Volume1 size={24} /></button>
-            <button onClick={() => sendCommand('media/vol_mute')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%', color: 'var(--danger-color)' }}><VolumeX size={24} /></button>
-            <button onClick={() => sendCommand('media/vol_up')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><Volume2 size={24} /></button>
+          <div className="card" style={{ display: 'flex', alignItems: 'center', padding: '24px', gap: '16px' }}>
+            <button onClick={() => sendCommand('media/vol_mute')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%', flexShrink: 0, color: 'var(--danger-color)' }}>
+              {actionLoading === 'media/vol_mute' ? <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} /> : <VolumeX size={24} />}
+            </button>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Volume</span>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                defaultValue="50" 
+                onMouseUp={(e: any) => sendCommand('media/volume', { level: parseInt(e.target.value) })}
+                onTouchEnd={(e: any) => sendCommand('media/volume', { level: parseInt(e.target.value) })}
+                style={{ width: '100%', cursor: 'pointer', opacity: actionLoading === 'media/volume' ? 0.5 : 1 }} 
+              />
+            </div>
           </div>
           <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px' }}>
-            <button onClick={() => sendCommand('media/prev')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><SkipBack size={24} /></button>
-            <button onClick={() => sendCommand('media/play_pause')} className="btn-primary" style={{ width: '70px', height: '70px', borderRadius: '50%' }}><Play size={32} style={{ marginLeft: '4px' }} /></button>
-            <button onClick={() => sendCommand('media/next')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}><SkipForward size={24} /></button>
+            <button onClick={() => sendCommand('media/prev')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}>
+              {actionLoading === 'media/prev' ? <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} /> : <SkipBack size={24} />}
+            </button>
+            <button onClick={() => sendCommand('media/play_pause')} className="btn-primary" style={{ width: '70px', height: '70px', borderRadius: '50%' }}>
+              {actionLoading === 'media/play_pause' ? <Loader2 size={32} style={{ animation: 'spin 1s linear infinite' }} /> : (isPlaying ? <Pause size={32} /> : <Play size={32} style={{ marginLeft: '4px' }} />)}
+            </button>
+            <button onClick={() => sendCommand('media/next')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}>
+              {actionLoading === 'media/next' ? <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} /> : <SkipForward size={24} />}
+            </button>
           </div>
         </div>
       )}
 
       {activeTab === 'system' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div className="card card-action" onClick={() => sendCommand('screen/off')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', padding: '20px' }}>
-            <div className="card-icon-wrapper" style={{ color: '#fff', background: 'rgba(255,255,255,0.1)' }}><MonitorOff size={24} /></div>
-            <div style={{ textAlign: 'left' }}><div className="card-title">Turn Off Screens</div><div className="card-status">Enters dark mode</div></div>
+          <div className="card card-action" onClick={() => sendCommand(screenOff ? 'screen/on' : 'screen/off')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', padding: '20px' }}>
+            <div className="card-icon-wrapper" style={{ color: '#fff', background: 'rgba(255,255,255,0.1)' }}>
+              {actionLoading === 'screen/on' || actionLoading === 'screen/off' ? <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} /> : (screenOff ? <Monitor size={24} /> : <MonitorOff size={24} />)}
+            </div>
+            <div style={{ textAlign: 'left' }}><div className="card-title">{screenOff ? 'Turn On Screens' : 'Turn Off Screens'}</div><div className="card-status">{screenOff ? 'Screens are currently off' : 'Enters dark mode'}</div></div>
           </div>
           
           <div className="card card-action" onClick={() => sendCommand('audio/toggle-mic')} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', padding: '20px' }}>
