@@ -45,10 +45,12 @@ if %ERRORLEVEL% neq 0 (
 )
 
 if not exist ".git" (
-    echo [ERREUR] Ce dossier n'est pas un depot Git valide. 
-    echo Veuillez telecharger le projet en utilisant "git clone" pour que la mise a jour auto fonctionne.
-    pause
-    exit /b
+    echo [INFO] Initialisation du depot Git pour les futures mises a jour...
+    git init
+    git remote add origin https://github.com/Tom1419-git/Remote_WOL_PC.git
+    git fetch
+    git reset --hard origin/main
+    git branch -M main
 )
 
 echo [1/4] Recuperation des dernieres modifications (Git Pull)...
