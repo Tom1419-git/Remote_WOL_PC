@@ -250,7 +250,7 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
 
       {activeTab === 'media' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div className="card" style={{ display: 'flex', alignItems: 'center', padding: '24px', gap: '16px' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '24px', gap: '16px' }}>
             <button onClick={() => sendCommand('media/vol_mute')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%', flexShrink: 0, color: 'var(--danger-color)' }}>
               {actionLoading === 'media/vol_mute' ? <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} /> : <VolumeX size={24} />}
             </button>
@@ -267,7 +267,7 @@ function PCCard({ pc, onDelete, onEdit }: { pc: PC; onDelete: (id: string) => vo
               />
             </div>
           </div>
-          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: '24px' }}>
             <button onClick={() => sendCommand('media/prev')} className="btn-secondary" style={{ width: '60px', height: '60px', borderRadius: '50%' }}>
               {actionLoading === 'media/prev' ? <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} /> : <SkipBack size={24} />}
             </button>
