@@ -174,6 +174,7 @@ async function reachPc(ip, apiKey, command, payload = null) {
   if (method === 'POST') {
     options.body = payload ? JSON.stringify(payload) : "{}";
   }
+  console.log('REACHPC TRYING:', url, JSON.stringify(options));
   const response = await fetch(url, options);
   const text = await response.text();
   let data;
@@ -276,7 +277,9 @@ app.all('/relay/*', authMiddleware, async (req, res) => {
       }
     }
 
-    res.status(result.status).json(result.data);
+    let statusToReturn = result.status;
+    if (statusToReturn === 401) statusToReturn = 502; // Prevent frontend from logging out the user
+    res.status(statusToReturn).json(result.data);
   } catch (err) {
     if (err.name === 'TimeoutError' || err.message.includes('fetch'))
       res.status(400).json({ error: 'Le PC ne repond pas. Est-il allume et le port ouvert ?' });
