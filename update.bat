@@ -47,17 +47,29 @@ if %ERRORLEVEL% neq 0 (
     )
 )
 
+set "SCRIPT_UPDATED=0"
 if not exist ".git" (
-    echo [INFO] Initialisation du depot Git pour les futures mises a jour...
+    echo Initialisation du depot Git local...
     git init
     git remote add origin https://github.com/Tom1419-git/Remote_WOL_PC.git
     git fetch
     git reset --hard origin/main
-    git branch -M main
+    set "SCRIPT_UPDATED=1"
+) else (
+    git fetch
+    for /f %%i in ('git rev-list HEAD...origin/main --count') do set "COMMITS_BEHIND=%%i"
+    if "!COMMITS_BEHIND!" NEQ "0" (
+        git pull origin main
+        set "SCRIPT_UPDATED=1"
+    )
 )
 
-echo [1/4] Recuperation des dernieres modifications (Git Pull)...
-git pull origin main
+if "!SCRIPT_UPDATED!"=="1" (
+    echo.
+    echo Le script de mise a jour a ete modifie. Relancement automatique...
+    start "" cmd /c "%~dp0update.bat"
+    exit /b
+)
 
 echo.
 echo [2/4] Arret de l'ancienne version...
