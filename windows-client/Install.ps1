@@ -70,22 +70,10 @@ Write-Host "Configuration du Pare-feu (Port 8085)..." -ForegroundColor Yellow
 Remove-NetFirewallRule -DisplayName "RemoteWOL_Client" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName "RemoteWOL_Client" -Direction Inbound -LocalPort 8085 -Protocol TCP -Action Allow | Out-Null
 
-# 6. Tâche Planifiée (Service en arrière-plan)
-Write-Host "Creation du service (Tache Planifiee)..." -ForegroundColor Yellow
+# 6. Tâche Planifiée (Lancement en session utilisateur au démarrage/logon)
+Write-Host "Creation de la tache planifiee (Session utilisateur)..." -ForegroundColor Yellow
 $TaskName = "RemoteWOL_Service"
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-
-$Action = New-ScheduledTaskAction -Execute "$PublishDir\PcRemoteClient.exe" -WorkingDirectory $PublishDir
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-$Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -DontStopOnIdleEnd -ExecutionTimeLimit (New-TimeSpan -Days 9999)
-
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Description "Service de controle a distance RemoteWOL" | Out-Null
-
-# 6.5. Tâche Planifiée (Verrouillage interactif)
-Write-Host "Creation de la tache de verrouillage (Session utilisateur)..." -ForegroundColor Yellow
-$LockTaskName = "RemoteWOL_Lock"
-Unregister-ScheduledTask -TaskName $LockTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 $LoggedUser = (Get-CimInstance Win32_ComputerSystem).UserName
 if ([string]::IsNullOrWhiteSpace($LoggedUser)) {
@@ -98,10 +86,15 @@ try {
     $UserSID = $LoggedUser
 }
 
-$LockAction = New-ScheduledTaskAction -Execute "rundll32.exe" -Argument "user32.dll,LockWorkStation"
-$LockPrincipal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive
-$LockSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName $LockTaskName -Action $LockAction -Principal $LockPrincipal -Settings $LockSettings -Description "Tache de verrouillage interactif pour RemoteWOL" | Out-Null
+$Action = New-ScheduledTaskAction -Execute "$TargetDir\PcRemoteClient.exe" -WorkingDirectory $TargetDir
+$Trigger = New-ScheduledTaskTrigger -AtLogon
+$Principal = New-ScheduledTaskPrincipal -UserId $UserSID -LogonType Interactive -RunLevel Highest
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+
+Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Description "Tache de controle interactif RemoteWOL" | Out-Null
+
+# Nettoyage de l'ancienne tâche de lock devenue inutile
+Unregister-ScheduledTask -TaskName "RemoteWOL_Lock" -Confirm:$false -ErrorAction SilentlyContinue
 
 # 7. Lancement
 Write-Host "Lancement du service..." -ForegroundColor Yellow
